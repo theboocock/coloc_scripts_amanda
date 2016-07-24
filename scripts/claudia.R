@@ -100,12 +100,12 @@ lABF.fn <- function (z, V, sd.prior=0.15) {
   #return(list("lABF" = lABF, "r" = r))
 }
 
-approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
-  sd.prior <- if (type == "quant") { 0.15*sdY } else { 0.2 }
-  # sd.prior = 0.44
-  lABF <- lABF.fn(z, V, sd.prior)
-  #ret <- data.frame(V, z, r, lABF)
-  ret <- data.frame(V, z, lABF)
+approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
+  print("Using the approx.bf.estimates.ave function!!!!!")
+  listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01)), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1)), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5)))
+  m <- do.call(cbind, listVec)
+  lABF <- apply(m, 1, function(x) logsum(x) -log(3))
+  ret <- data.frame(V, z, m, lABF)
   if(!is.null(suffix))
     colnames(ret) <- paste(colnames(ret), suffix, sep = ".")
   return(ret)
@@ -363,11 +363,20 @@ coloc.abf <- function(dataset1, dataset2, MAF=NULL,
    if(!nrow(merged.df))
     stop("dataset1 and dataset2 should contain the same snps in the same order, or should contain snp names through which the common snps can be identified")
 
-  merged.df$internal.sum.lABF <- with(merged.df, lABF.df1 + lABF.df2)
+  # if there are no columns with lABF computed from different sds, internal sum is just simple sum of lABF:
+  if (length(grep("lABF_sd", names(merged.df), value=T))==0) {
+     merged.df$internal.sum.lABF <- with(merged.df, lABF.df1 + lABF.df2)
+  } else {
+     merged.df$lABF_ave.df1 = apply(cbind(merged.df$lABF_sd1.df1, merged.df$lABF_sd2.df1, merged.df$lABF_sd3.df1),1, function(x) logsum(sum(x)) - log(3))
+     merged.df$lABF_ave.df2 = apply(cbind(merged.df$lABF_sd1.df2, merged.df$lABF_sd2.df2, merged.df$lABF_sd3.df2),1, function(x) logsum(sum(x)) - log(3))
+
+     #logsum(c(0.4997166-0.6098722, -0.5717010 -1.626539, -1.369113 -2.417628))-log(3)
+     merged.df$internal.sum.lABF <- apply(cbind(merged.df$lABF_sd1.df1 + merged.df$lABF_sd1.df2, merged.df$lABF_sd2.df1 + merged.df$lABF_sd2.df2, merged.df$lABF_sd3.df1 + merged.df$lABF_sd3.df2), 1, function(x) logsum(x) - log(3))
+  }
+
   ## add SNP.PP.H4 - post prob that each SNP is THE causal variant for a shared signal
   my.denom.log.abf <- logsum(merged.df$internal.sum.lABF)
   merged.df$SNP.PP.H4 <- exp(merged.df$internal.sum.lABF - my.denom.log.abf)
-  
  
 ############################## 
 
