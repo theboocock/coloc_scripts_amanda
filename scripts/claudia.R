@@ -47,7 +47,12 @@ logsum <- function(x) {
 ##' @author Chris Wallace
 logdiff <- function(x,y) {
   my.max <- max(x,y)                              ##take out the maximum value in log form
-  my.res <- my.max + log(exp(x - my.max ) - exp(y-my.max))
+  if (x>y) {
+    my.res <- my.max + log(exp(x - my.max ) - exp(y-my.max))
+  } 
+  if (x<y) {
+    my.res <- my.max + log(exp(y-my.max) - exp(x - my.max ))
+  }
   return(my.res)
 }
 
@@ -100,6 +105,32 @@ lABF.fn <- function (z, V, sd.prior=0.15) {
   #return(list("lABF" = lABF, "r" = r))
 }
 
+approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
+  sd.prior <- if (type == "quant") { 0.15*sdY } else { 0.2 }
+  # sd.prior = 0.44
+  lABF <- lABF.fn(z, V, sd.prior)
+  #ret <- data.frame(V, z, r, lABF)
+  ret <- data.frame(V, z, lABF)
+  if(!is.null(suffix))
+    colnames(ret) <- paste(colnames(ret), suffix, sep = ".")
+  return(ret)
+}
+
+##approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
+##  print("Using the approx.bf.estimates.ave function!!!!!")
+##  listVec <- list(lABF.fn(z, V, sd.prior=sqrt(0.01)), lABF.fn(z, V, sd.prior=sqrt(0.1)), lABF.fn(z, V, sd.prior=sqrt(0.5)))
+##  m <- do.call(cbind, listVec)
+  #lABF <- rowMeans(m)
+  #lABF <- apply(m, 1, logsum-log(3))
+##  lABF <- apply(m, 1, function(x) logsum(x) -log(3))
+  #ret <- data.frame(V, z, r, lABF)
+##  ret <- data.frame(V, z, lABF)
+##  if(!is.null(suffix))
+##    colnames(ret) <- paste(colnames(ret), suffix, sep = ".")
+##  return(ret)
+##}
+
+
 approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
   print("Using the approx.bf.estimates.ave function!!!!!")
   listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01)), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1)), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5)))
@@ -111,18 +142,6 @@ approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
   return(ret)
 }
 
-approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
-  listVec <- list(lABF.fn(z, V, sd.prior=sqrt(0.01)), lABF.fn(z, V, sd.prior=sqrt(0.1)), lABF.fn(z, V, sd.prior=sqrt(0.5)))
-  m <- do.call(cbind, listVec)
-  #lABF <- rowMeans(m)
-  #lABF <- apply(m, 1, logsum-log(3))
-  lABF <- apply(m, 1, function(x) logsum(x) -log(3))
-  #ret <- data.frame(V, z, r, lABF)
-  ret <- data.frame(V, z, lABF)
-  if(!is.null(suffix))
-    colnames(ret) <- paste(colnames(ret), suffix, sep = ".")
-  return(ret)
-}
 
 #approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
 #  sd.prior <- if (type == "quant") { 0.15*sdY } else { 0.2 }
@@ -239,7 +258,7 @@ sdY.est <- function(vbeta, maf, n) {
 ##' @param suffix "df1" or "df2"
 ##' @return data.frame with log(abf) or log(bf)
 ##' @author Chris Wallace
-process.dataset <- function(d, suffix) {
+process.dataset <- function(d, suffix, ave=TRUE) {
   message('Processing dataset')
 
   nd <- names(d)
@@ -254,21 +273,29 @@ process.dataset <- function(d, suffix) {
     if(length(d$snp) != length(d$beta))
       stop("Length of snp names and beta vectors must match")
  
-    if(d$type == 'quant' & !('sdY' %in% nd)) 
+    if(d$type == 'quant' & !('sdY' %in% nd) & !ave) 
       d$sdY <- sdY.est(d$varbeta, d$MAF, d$N)
     
     # is the BETA a log OR or OR/Effect size (not logged?)
     # if there are negative value, then it is a logOR?
     if (length(d$beta[d$beta<0])>0) log=TRUE  else log=FALSE 
-    #df <- approx.bf.estimates(z=d$beta/sqrt(d$varbeta),
-    #                          V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
-    df <- approx.bf.estimates.ave(z=d$beta/sqrt(d$varbeta),
+    if (!ave) {
+      df <- approx.bf.estimates(z=d$beta/sqrt(d$varbeta),
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+      }
+    if (ave) {
+      df <- approx.bf.estimates.ave(z=d$beta/sqrt(d$varbeta),
+                              V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+      }
     if (type=="cc" & !log)  {
-    #df <- approx.bf.estimates(z=log(d$beta)/sqrt(d$varbeta),
-    #                          V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
-    df <- approx.bf.estimates.ave(z=log(d$beta)/sqrt(d$varbeta),
+    if (!ave) {
+       df <- approx.bf.estimates(z=log(d$beta)/sqrt(d$varbeta),
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+       }
+    if (ave) {
+        df <- approx.bf.estimates.ave(z=log(d$beta)/sqrt(d$varbeta),
+                              V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+       }
     }
     df$snp <- as.character(d$snp)
     return(df)
@@ -356,15 +383,15 @@ coloc.abf <- function(dataset1, dataset2, MAF=NULL,
   if(!("MAF" %in% names(dataset2)) & !is.null(MAF))
     dataset2$MAF <- MAF
   
-  df1 <- process.dataset(d=dataset1, suffix="df1")
-  df2 <- process.dataset(d=dataset2, suffix="df2")
+  df1 <- process.dataset(d=dataset1, suffix="df1", ave=TRUE)
+  df2 <- process.dataset(d=dataset2, suffix="df2", ave=TRUE)
   merged.df <- merge(df1,df2)
 
    if(!nrow(merged.df))
     stop("dataset1 and dataset2 should contain the same snps in the same order, or should contain snp names through which the common snps can be identified")
 
   # if there are no columns with lABF computed from different sds, internal sum is just simple sum of lABF:
-  if (length(grep("lABF_sd", names(merged.df), value=T))==0) {
+  if (length(grep("lABF_sd", names(merged.df), value=T))==0) { 
      merged.df$internal.sum.lABF <- with(merged.df, lABF.df1 + lABF.df2)
   } else {
      merged.df$lABF_ave.df1 = apply(cbind(merged.df$lABF_sd1.df1, merged.df$lABF_sd2.df1, merged.df$lABF_sd3.df1),1, function(x) logsum(sum(x)) - log(3))
@@ -377,6 +404,7 @@ coloc.abf <- function(dataset1, dataset2, MAF=NULL,
   ## add SNP.PP.H4 - post prob that each SNP is THE causal variant for a shared signal
   my.denom.log.abf <- logsum(merged.df$internal.sum.lABF)
   merged.df$SNP.PP.H4 <- exp(merged.df$internal.sum.lABF - my.denom.log.abf)
+  
  
 ############################## 
 
