@@ -1,7 +1,7 @@
 coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE) {
 
-  source("/hpc/users/giambc02/scripts/COLOC/claudia.R")
-  source("/hpc/users/giambc02/scripts/COLOC/optim_function.R")
+  source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/claudia.R")
+  source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/coloc.eqtl.biom.compare.R")
 
 if (!file.exists(outfolder)) dir.create(outfolder)
 if (plot) {
@@ -52,12 +52,19 @@ if (!maf.eqtl & maf.biom) {
 # Otherwise look for a frequency column
 if (!maf.eqtl & !maf.biom) {
    freq.eqtl = ifelse("F" %in% names(eqtl.df), TRUE, FALSE)
+   message(names(biom.df))
+   freq.biom = ifelse("F" %in% names(biom.df), TRUE, FALSE)
    if (freq.eqtl) {
-   #"^F$|freq|FRQ|MAF"
-   eqtl.df$MAF = ifelse(eqtl.df$F<0.5, eqtl.df$F, 1-eqtl.df$F)
-   eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
-   maf.eqtl = TRUE
-   cols.eqtl = c(cols.eqtl, "MAF")
+       #"^F$|freq|FRQ|MAF"
+       eqtl.df$MAF = ifelse(eqtl.df$F<0.5, eqtl.df$F, 1-eqtl.df$F)
+       eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
+       maf.eqtl = TRUE
+       cols.eqtl = c(cols.eqtl, "MAF")
+   }else if(freq.biom){
+       biom.df$MAF = ifelse(biom.df$F<0.5, biom.df$F, 1-biom.df$F)
+       biom.df = subset(biom.df, biom.df$MAF > maf_filter)
+       maf.biom= TRUE
+       cols.biom = c(cols.biom, "MAF")
    }
 }
 
@@ -72,7 +79,6 @@ if (!maf.eqtl & !maf.biom) stop("There is no MAF information in neither datasets
   #if (!"input_name" %in% colnames(biom.df) && (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", biom.df$SNPID))!=nrow(biom.df))) {
   if (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", biom.df$SNPID))!=nrow(biom.df)) addChrposBiom = TRUE
   if (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", eqtl.df$SNPID))!=nrow(eqtl.df)) addChrposEQTL = TRUE
-
   if (addChrposBiom) {
     biom.df$chrpos = paste(biom.df$CHR, biom.df$POS, sep=":")
   }

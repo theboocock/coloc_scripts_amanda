@@ -15,7 +15,7 @@ Var.data <- function(f, N) {
 ##' Internal function
 ##' @title Var.data
 ##' @inheritParams Var.data
-##' @param s ???
+##' @param s sample size ratio (N_case/(N_case + N_control)) 
 ##' @return variance of MLE beta
 ##' @author Claudia Giambartolomei
 Var.data.cc <- function(f, N, s) {
@@ -132,8 +132,7 @@ approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
 
 
 approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
-  print("Using the approx.bf.estimates.ave function!!!!!")
-  listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01)), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1)), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5)))
+  listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01*sdY)), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1*sdY)), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5*sdY)))
   m <- do.call(cbind, listVec)
   lABF <- apply(m, 1, function(x) logsum(x) -log(3))
   ret <- data.frame(V, z, m, lABF)
@@ -141,6 +140,37 @@ approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
     colnames(ret) <- paste(colnames(ret), suffix, sep = ".")
   return(ret)
 }
+
+
+lABF.fn.corr  <-  function(z1,V1,z2,sd.prior){
+    r =  
+}
+
+lABF.fn.corr.coloc <-  function(z1,V1,z2,V2,sd.prior1,sd.prior2){
+    r = 
+}
+
+approx.bf.estimates.ave.corr <- function (z1, V1,z2,V2, type, suffix=NULL, sdY1=1,sdY2=1,correlation=0) {
+  listVec <- list(lABF_sd1 = lABF.fn.corr(z1, V1,z2, sd.prior1=sqrt(0.01*sdY1),correlation=correlation), lABF_sd2 = lABF.fn.corr(z1,V1,z2,sd.prior1=sqrt(0.1*sdY1),correlation=correlation),lABF_sd3 = lABF.fn.corr(z1, V1,z2, sd.prior1=sqrt(0.5*sdY1),correlation=correlation))
+  m <- do.call(cbind, listVec)
+  lABF1<- apply(m, 1, function(x) logsum(x) -log(3))
+  
+  listVec <- list(lABF_sd1 = lABF.fn.corr(z2, V2,z1, sd.prior1=sqrt(0.01*sdY2),correlation=correlation), lABF_sd2 = lABF.fn.corr(z2,V2,z1,sd.prior1=sqrt(0.1*sdY2),correlation=correlation),lABF_sd3 = lABF.fn.corr(z2, V2,z1, sd.prior1=sqrt(0.5*sdY2),correlation=correlation))
+  m <- do.call(cbind, listVec)
+  lABF2 = apply(m, 1, function(x) logsum(x) -log(3))
+  
+  
+  listVec <- list(lABF_sd1 = lABF.fn.corr.coloc(z1, V1,z2,V2, sd.prior1=sqrt(0.01*sdY1),sd.prior2=sqrt(0.01*sdY2),correlation=correlation), lABF_sd2 = lABF.fn.corr(z1,V1,z2,V2,sd.prior1=sqrt(0.1*sdY1),sd.prior2=sqrt(0.1*sdY2),correlation=correlation),lABF_sd3 = lABF.fn.corr(z1, V1,z2,V2,sd.prior1=sqrt(0.5*sdY1),sd.prior2=sqrt(0.5*sdY2),correlation=correlation))
+
+  m <- do.call(cbind, listVec)
+  lABF3 = apply(m, 1, function(x) logsum(x) -log(3))
+
+  ret <- data.frame(V, z, lABF1,lABF2,lABF3)
+  if(!is.null(suffix))
+    colnames(ret) <- paste(colnames(ret), suffix, sep = ".")
+  return(ret)
+}
+
 
 
 #approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
@@ -251,14 +281,18 @@ sdY.est <- function(vbeta, maf, n) {
   return(sqrt(coef(m)[["oneover"]]))
 }
 
+
+
 ##' Internal function, process each dataset list for coloc.abf
 ##'
 ##' @title process.dataset
 ##' @param d list
 ##' @param suffix "df1" or "df2"
+##' @param ave calculate average logBFS
+##' @param estimate_sdy estimate SDY using regression.
 ##' @return data.frame with log(abf) or log(bf)
 ##' @author Chris Wallace
-process.dataset <- function(d, suffix, ave=TRUE) {
+process.dataset <- function(d, suffix, ave=TRUE, estimate_sdy=TRUE,correlation=0) {
   message('Processing dataset')
 
   nd <- names(d)
@@ -272,29 +306,44 @@ process.dataset <- function(d, suffix, ave=TRUE) {
       d$snp <- sprintf("SNP.%s",1:length(d$beta))
     if(length(d$snp) != length(d$beta))
       stop("Length of snp names and beta vectors must match")
- 
-    if(d$type == 'quant' & !('sdY' %in% nd) & !ave) 
-      d$sdY <- sdY.est(d$varbeta, d$MAF, d$N)
-    
-    # is the BETA a log OR or OR/Effect size (not logged?)
+    if(estimate_sdy){
+        if(d$type == 'quant' & !('sdY' %in% nd)){
+           if("N" %in% nd){ 
+                d$sdY <- sdY.est(d$varbeta, d$MAF, d$N)
+           }else{
+                d$sdY  <- 1
+           }
+        }
+    }
+    if(correlation != 0){
+        df = data.frame(Z,V,sdy) 
+        df$Z=d$beta/sqrt(d$varbeta) 
+        df$V =d$varbeta
+        df$sdY=d$sdY
+        if(!is.null(suffix))
+            colnames(ret) <- paste(colnames(ret), suffix, sep=".")
+        df$snp <- as.character(d$snp)
+        return(df)
+    }
     # if there are negative value, then it is a logOR?
     if (length(d$beta[d$beta<0])>0) log=TRUE  else log=FALSE 
-    if (!ave) {
+    if (d$type == "quant") {
+        if(!ave) {
       df <- approx.bf.estimates(z=d$beta/sqrt(d$varbeta),
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
-      }
-    if (ave) {
+        }else if(ave){ 
       df <- approx.bf.estimates.ave(z=d$beta/sqrt(d$varbeta),
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
-      }
-    if (type=="cc" & !log)  {
+        }
+    }
+    if (d$type=="cc" & log)  {
     if (!ave) {
        df <- approx.bf.estimates(z=log(d$beta)/sqrt(d$varbeta),
-                              V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+                              V=d$varbeta, type=d$type, suffix=suffix, sdY=1)
        }
     if (ave) {
         df <- approx.bf.estimates.ave(z=log(d$beta)/sqrt(d$varbeta),
-                              V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+                              V=d$varbeta, type=d$type, suffix=suffix, sdY=1)
        }
     }
     df$snp <- as.character(d$snp)
@@ -374,7 +423,7 @@ process.dataset <- function(d, suffix, ave=TRUE) {
 ##' @author Claudia Giambartolomei, Chris Wallace
 ##' @export
 coloc.abf <- function(dataset1, dataset2, MAF=NULL, 
-                      p1=1e-4, p2=1e-4, p12=1e-5) {
+                      p1=1e-4, p2=1e-4, p12=1e-5, correlation=0) {
 
   if(!is.list(dataset1) || !is.list(dataset2))
     stop("dataset1 and dataset2 must be lists.")
@@ -382,15 +431,20 @@ coloc.abf <- function(dataset1, dataset2, MAF=NULL,
     dataset1$MAF <- MAF
   if(!("MAF" %in% names(dataset2)) & !is.null(MAF))
     dataset2$MAF <- MAF
-  
-  df1 <- process.dataset(d=dataset1, suffix="df1", ave=TRUE)
-  df2 <- process.dataset(d=dataset2, suffix="df2", ave=TRUE)
+    
+  # We are doing correlation .
+  df1 <- process.dataset(d=dataset1, suffix="df1", ave=TRUE,correlation=correlation)
+  df2 <- process.dataset(d=dataset2, suffix="df2", ave=TRUE,correlation=correlation)
   merged.df <- merge(df1,df2)
+   
 
    if(!nrow(merged.df))
     stop("dataset1 and dataset2 should contain the same snps in the same order, or should contain snp names through which the common snps can be identified")
 
   # if there are no columns with lABF computed from different sds, internal sum is just simple sum of lABF:
+  if(correlation != 0){
+    merged.df$approx.bf.estimates.ave(d$Z.df1,d$V.df1,d$Z.df2,d$V.df2,d$sdY.df1,d$sdY.df2)   
+  }else{
   if (length(grep("lABF_sd", names(merged.df), value=T))==0) { 
      merged.df$internal.sum.lABF <- with(merged.df, lABF.df1 + lABF.df2)
   } else {
@@ -400,12 +454,12 @@ coloc.abf <- function(dataset1, dataset2, MAF=NULL,
      #logsum(c(0.4997166-0.6098722, -0.5717010 -1.626539, -1.369113 -2.417628))-log(3)
      merged.df$internal.sum.lABF <- apply(cbind(merged.df$lABF_sd1.df1 + merged.df$lABF_sd1.df2, merged.df$lABF_sd2.df1 + merged.df$lABF_sd2.df2, merged.df$lABF_sd3.df1 + merged.df$lABF_sd3.df2), 1, function(x) logsum(x) - log(3))
   }
+  }
 
   ## add SNP.PP.H4 - post prob that each SNP is THE causal variant for a shared signal
   my.denom.log.abf <- logsum(merged.df$internal.sum.lABF)
   merged.df$SNP.PP.H4 <- exp(merged.df$internal.sum.lABF - my.denom.log.abf)
   
- 
 ############################## 
 
   pp.abf <- combine.abf(merged.df$lABF.df1, merged.df$lABF.df2, p1, p2, p12)  

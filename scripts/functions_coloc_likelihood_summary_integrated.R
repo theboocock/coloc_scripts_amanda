@@ -1,9 +1,24 @@
+library(foreach)
+library(doParallel)
 
-coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=FALSE) { # match_snpid match by SNPID or match by best combination?
+merge_results  <- function(a, b){
+    if(is.null(a) & is.null(b)){
+        return(NULL)
+    }else if(is.null(a)){
+        return(b)
+    }else if(is.null(b)){
+        return(a)
+    }else{
+        return(rbind(a,b))
+    }
+}
+coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20) { # match_snpid match by SNPID or match by best combination
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
-  source("/hpc/users/giambc02/scripts/COLOC/claudia.R")
-  source("/hpc/users/giambc02/scripts/COLOC/optim_function.R")
+  source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/claudia.R")
+  source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/optim_function.R")
+
+# Estimate trait variance. 
 
 if (!file.exists(outfolder)) dir.create(outfolder)
 if (plot) {
@@ -40,8 +55,8 @@ if (!maf.eqtl & !maf.biom) message("There is no MAF information in neither datas
 
 #if ("PVAL" %in% names(biom.df))
 if (useBETA) {
-   cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "ProbeID") # We need the N only if we do the sdYest step...
-   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE") # We need the N only if we do the sdYest step...
+   cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "ProbeID","N") # We need the N only if we do the sdYest step...
+   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE")# We need the N only if we do the sdYest step...
    }
 if (!useBETA) {
    cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "ProbeID", "N")
@@ -77,16 +92,24 @@ if (!maf.eqtl & maf.biom) {
 # Otherwise look for a frequency column
 if (!maf.eqtl & !maf.biom) {
    freq.eqtl = ifelse("F" %in% names(eqtl.df), TRUE, FALSE)
+   freq.biom = ifelse("F" %in% names(biom.df), TRUE, FALSE)
    if (freq.eqtl) {
    #"^F$|freq|FRQ|MAF"
    eqtl.df$MAF = ifelse(eqtl.df$F<0.5, eqtl.df$F, 1-eqtl.df$F)
    eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
    maf.eqtl = TRUE
    cols.eqtl = c(cols.eqtl, "MAF")
+   }else if(freq.biom){
+       message("Using frequency from biomarker")
+       biom.df$MAF = ifelse(biom.df$F<0.5, biom.df$F, 1-biom.df$F)
+       biom.df = subset(biom.df, biom.df$MAF > maf_filter)
+       maf.biom= TRUE
+       cols.biom = c(cols.biom, "MAF")
    }
 }
 
 if (!maf.eqtl & !maf.biom) stop("There is no MAF information in neither datasets")
+
 
 ################## SNPID MATCHING
 # The reasoning here is that the user can give either only "SNPID", or "SNPID" and "input_names" (or we can find it as rsid or chr:pos and add it in the data as input_names)
@@ -130,7 +153,6 @@ if (addChrposBiom) {
   match_chrpos_snpid = max(length(biomchrpos[biomchrpos %in% eqtlSNPID]), length(biomchrpos[biomchrpos %in% eqtlSNPID]))
 }
 
-#if (addChrposEQTL & !addChrposBiom) {
 if (addChrposEQTL) {
    eqtlchrpos = unique(eqtl.df$chrpos)
    if (!addChrposBiom) {
@@ -162,7 +184,6 @@ if (find_best_column==3) {
 #####################
   biom.df = biom.df[,cols.biom]
   eqtl.df = eqtl.df[,cols.eqtl]
-
   # Remove missing data
   eqtl.df = eqtl.df[complete.cases(eqtl.df),]
   biom.df = biom.df[complete.cases(biom.df),]
@@ -204,43 +225,28 @@ if (onlyOverlap) {
 #  expr_table_interesting = unique(expr_table_interesting$ProbeID)
 
 #probes = unique(eqtl.df$ProbeID)
-commonChr = intersect(unique(eqtl.df$CHR), unique(biom.df$CHR))
 ### split biomarker data by chromosome
 message('For maximum speed, split the data by chromosome first')
 # if don't have chr pos info?
-biom.dfByChr = split(biom.df, f=as.factor(biom.df$CHR))
-eqtl.dfByChr = split(eqtl.df, f=as.factor(eqtl.df$CHR))
-# eqtl.dfByProbe = split(eqtl.dfByChr, f=as.factor(eqtl.dfByChr$ProbeID))
 
 # lapply(names(dataByChr), function(x){write.table(dataByChr[[x]], row.names = FALSE, quote = FALSE, col.names = TRUE, sep=" ", file = paste(DIR, "/data/", x, sep = ""))})
 ##################################################### now start the loop
 # Now go over all regions that overlap between eQTL table and input.data
-for (chr in commonChr){
-      message("Looping through chr ", chr)
-      my.chr = chr
-      biom.df.chr = biom.dfByChr[[as.character(chr)]]
-
-      eqtl.df.chr = eqtl.dfByChr[[as.character(chr)]]
-      eqtl.dfByProbe = split(eqtl.df.chr, f=as.factor(eqtl.df.chr$ProbeID))
- 
-      #for (eqtl.region in 1:nrow(expr_table)) {
-      # biom.df.chr <- subset(my_split_list_biom[[as.character(my.chr)]], POS >=  expr_table_interesting$start[ eqtl.region ] & POS < expr_table_interesting$stop[ eqtl.region ])biom.df.chr <- subset(my_split_list_biom[[as.character(my.chr)]])
-
-      list.probes <- unique(eqtl.df.chr$ProbeID[eqtl.df.chr$SNPID %in% biom.df.chr$SNPID])
-
-      # There can be more than one probe per gene 
-      for (i in 1:length(list.probes)) {  ### find each gene with a cis-eQTL
-
+message("Running in parallel")
+registerDoParallel(cores=cores)
+list.probes = unique(eqtl.df$ProbeID[which(eqtl.df$SNPID %in% biom.df$SNPID)])
+eqtl.dfByProbe=  split(eqtl.df, f=as.factor(eqtl.df$ProbeID))
+res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
        ProbeID = as.character(list.probes[i]) ##the character bit is important for probe names that are numbers
        #region.eqtl <- subset(eqtl.df.chr, ProbeID == as.character(list.probes[i]))
        region.eqtl <- eqtl.dfByProbe[[as.character(ProbeID)]]
        pos.start <- min(region.eqtl$POS)
        pos.end   <- max(region.eqtl$POS)
        #my.chr = unique(region.eqtl$CHR)
-
+       chrom = region.eqtl$CHR[1]
        #matches <- which(biom.df.chr$CHR==my.chr & biom.df.chr$POS > pos.start & biom.df.chr$POS < pos.end )
-       matches <- which(biom.df.chr$POS >= pos.start & biom.df.chr$POS <= pos.end )
-       region.biom <- biom.df.chr[matches, ]
+       matches <- which(chrom == biom.df$CHR & biom.df$POS >= pos.start & biom.df$POS <= pos.end )
+       region.biom <- biom.df[matches, ]
 
        # matches <- which(my_split_list[[as.character(my.chr)]]
        # region.biom <- subset(my_split_list[[as.character(my.chr)]], biom.df[matches, ])
@@ -257,16 +263,14 @@ for (chr in commonChr){
           type = "quant"
           region.biom$s1=rep(0.5, length(region.biom$N)) ## This will be ignored since the type is "quant"
          }
-
          merged.data <- merge(region.biom, region.eqtl, by = "SNPID",  suffixes=c(".biom", ".eqtl"))
          # Remove the pvalues at zero, otherwise it gives an error!
-         if (!useBETA) merged.data = merged.data[merged.data$PVAL.biom>0 & merged.data$PVAL.eqtl>0,]
-
-
+      if (!useBETA) merged.data = merged.data[merged.data$PVAL.biom>0 & merged.data$PVAL.eqtl>0,]
          n_occur <- data.frame(table(merged.data$SNPID))
          dupl = merged.data[merged.data$SNPID %in% n_occur$Var1[n_occur$Freq > 1],]
          message("There are ", nrow(dupl)/2, " duplicated SNP names in the data")
          if (nrow(dupl)>0) {
+          write.table(merged.data,file='wow.txt', row.names=F, col.names=T)
           #removed_list <- rbind(removed_list, data.frame(Marker_removed = dupl$SNPID, reason = "Duplicated SNPs"))
           dupl=dupl[order(dupl$MAF, decreasing=T),]
           toremove = rownames(dupl[ !duplicated(dupl$SNPID), ])
@@ -277,7 +281,10 @@ for (chr in commonChr){
 
          message(ProbeID, ": ", nsnps, " snps in both biomarker and eQTL data. From: ", pos.start, " To: ", pos.end)
 
-         if (nsnps <= 2 ) ("There are not enough common snps in the region")
+         if (nsnps <= 2 ) {
+             message("There are not enough common snps in the region")
+             return(NULL)
+         }
          if (nsnps > 2 ) {
 
            # For now run with p-values (better for cc data)
@@ -288,16 +295,13 @@ for (chr in commonChr){
                            N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF)
            } else {
                 dataset.biom = list(snp = merged.data$SNPID, beta = merged.data$BETA.biom, varbeta= (merged.data$SE.biom)^2,
-                           N = merged.data$N.biom, s=merged.data$s1, type = type, MAF=merged.data$MAF)
+                           s=merged.data$s1, type = type, MAF=merged.data$MAF)
                 dataset.eqtl = list(snp = merged.data$SNPID, beta = merged.data$BETA.eqtl, varbeta= (merged.data$SE.eqtl)^2,
-                           N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF)
+                           N = as.numeric(merged.data$N), type = "quant", MAF=merged.data$MAF)
                 #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
          }
-
          coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)
          suppressMessages(capture.output(coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)))
-         #suppressMessages(capture.output(coloc.res <- coloc.abf2(dataset.biom, dataset.eqtl, p12 = p12)))
-         #nsnps <- as.numeric(coloc.res$summary[1]) # I think this is wrong -- computed before the merging of dataests
          pp0       <- as.numeric(coloc.res$summary[2])
          pp1       <- as.numeric(coloc.res$summary[3])
          pp2       <- as.numeric(coloc.res$summary[4])
@@ -314,26 +318,14 @@ for (chr in commonChr){
          l1 = coloc.res$results$lABF.df1
          l2 = coloc.res$results$lABF.df2
          lsum <- coloc.res$results$internal.sum.lABF # lsum = l1 + l2
-
          lH0.abf <- 0
          lH1.abf <-  logsum(l1) - log(nsnps)
          lH2.abf <-  logsum(l2) - log(nsnps)
-
-         #lH4.abf <-  logsum(lsum)-log(nsnps)
-         #lH3.abf <-  logdiff(lH1.abf + lH2.abf, lH4.abf)
          lH3.abf <- logdiff(logsum(l1) + logsum(l2), logsum(lsum))  - log(nsnps^2)
          lH4.abf <- logsum(lsum) -log(nsnps)
-
          all.abf <- c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
 
-         # Optimize to find the best parameters: if by region do here
-         #lkl.frame = cbind(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
-         #alphas = optim(c(2, -2, -2, -2, -2), fn, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
-         #optim.alphas = exp(alphas$par)/ sum(exp(alphas$par))
-
-         #res.temp = data.frame(ProbeID = ProbeID, Chr = my.chr, pos.start=pos.start, pos.end=pos.end, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, p0.optim.priors=optim.alphas[1], p1.optim.priors=optim.alphas[2], p2.optim.priors=optim.alphas[3], p3.optim.priors=optim.alphas[4], p4.optim.priors=optim.alphas[5], files=NA)
-
-         res.temp = data.frame(ProbeID = ProbeID, Chr = my.chr, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA)
+         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA)
 
          if (save.coloc.output) {
            coloc.out = paste(outfolder, "/coloc.output.perSNP/", sep="")
@@ -345,18 +337,17 @@ for (chr in commonChr){
 
          ############# PLOT
          if (plot & (pp4 > 0.2 | pp3 >=0.2) & nsnps > 2) {
-         #if (plot & pp4 > 0.5 & nsnps > 2) {
          # For plotting, input called chr has to be numeric!
          # Make sure this is the case otherwise no plot is produced (because the locusZoom script coerces this value to numeric and NA is produced if not numeric
-         my.chr = gsub("chr","", my.chr)
+         chrom = gsub("chr","", chrom)
 
                 pvalue_BF_df = as.data.frame(coloc.res[2])
                 #region_name <- paste(ProbeID,'.', biom.names[j], ".chr", chr.name, "_", pos.start, "_", pos.end, sep= '')
-                region_name <- paste(prefix, ".", ProbeID, ".chr", my.chr, "_", pos.start, "_", pos.end, sep= '')
+                region_name <- paste(prefix, ".", ProbeID, ".chr", chrom, "_", pos.start, "_", pos.end, sep= '')
                 pvalue_BF_file <- paste(pval.fld, 'pval_', region_name, '.txt', sep="")
 
                 ### LocusZoom arguments:
-                pvalue_BF_df$chr = my.chr
+                pvalue_BF_df$chr = chrom 
                 pvalue_BF_df$pos = merged.data[match(pvalue_BF_df$results.snp, merged.data$SNPID), "POS.biom"]
                 pvalue_BF_df$locus_snp <- paste(pvalue_BF_df$chr, pvalue_BF_df$pos, sep=":")
                 pvalue_BF_df$locus_snp <- paste("chr", pvalue_BF_df$locus_snp, sep="")
@@ -382,7 +373,7 @@ for (chr in commonChr){
                   ylab = '-log10( biomarker P-value )',
                   chrCol= 'chr',
                   posCol = 'pos',
-                  chr = my.chr,
+                  chr = chrom,
                   showGenes = TRUE,
                   show_xlab=FALSE,
                   temp.file.code = region_name,
@@ -404,7 +395,7 @@ for (chr in commonChr){
                   ylab = '-log10( expression P-value )',
                   chrCol= 'chr',
                   posCol = 'pos',
-                  chr = my.chr,
+                  chr = chrom,
                   showGenes = TRUE,
                   show_xlab=FALSE,
                   temp.file.code = region_name,
@@ -415,25 +406,24 @@ for (chr in commonChr){
                 # If the plot is empty unlink:
                 if (is.null(plotted)) unlink(image.eqtl)
 
-                 res.temp$plotFiles= paste(as.character(paste(plot.fld, region_name, "_df1.pdf", sep="")), as.character(paste(plot.fld, region_name, "_df2.pdf", sep="")))
+                 res.temp$plotFiles= paste(as.character(paste0(plot.fld, region_name, "_df1.pdf", sep="")), as.character(paste(plot.fld, region_name, "_df2.pdf", sep="")),sep=",")
          }
 
-         res.all <- rbind(res.all, res.temp)
+         #res.all <- rbind(res.all, res.temp)
          #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
-         outfname = paste(outfolder, prefix, '_summary.tab', sep='')
-         write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
-
+        return(res.temp)
      }
-   }
-   } # chr loop
+     return(NULL)
+}
 
+   outfname = paste(outfolder, prefix, '_summary.tab', sep='')
+   write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
    res.all <- data.frame(res.all)
    res.all$ProbeID <- as.character(res.all$ProbeID)
    res.all$snp.eqtl <- as.character(res.all$snp.eqtl)
    res.all$best.causal <- as.character(res.all$best.causal)
    res.all$plotFiles <- as.character(res.all$plotFiles)
    res.all$files <- as.character(res.all$files)
-
    optim.res =  paste(outfolder, 'maximization_results.txt', sep='') 
    # Optimize to find the best parameters
    lkl.frame = res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")]
@@ -468,7 +458,6 @@ for (chr in commonChr){
       if (biomart) {
       library(biomaRt)
       #if (length(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]) >0 ) {
-        library(biomaRt)
         mart <- useMart(biomart="ensembl", dataset="hsapiens_gene_ensembl")
         res.gn <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), filters = "ensembl_gene_id", values = as.character(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]), mart = mart)
         res.gn = res.gn[res.gn$hgnc_symbol!="",]
@@ -480,10 +469,7 @@ for (chr in commonChr){
         res.all$Gene.name = genes[match(res.all$Gene.name, genes$ensembl_gene_id), "hgnc_symbol"]
     }
    }
-
-
    write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
-
    return(res.all)
 }
 
