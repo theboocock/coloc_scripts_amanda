@@ -1,5 +1,7 @@
 library(foreach)
 library(doParallel)
+library(GenomicRanges)
+library(rtracklayer)
 
 merge_results  <- function(a, b){
     if(is.null(a) & is.null(b)){
@@ -12,7 +14,7 @@ merge_results  <- function(a, b){
         return(rbind(a,b))
     }
 }
-coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20) { # match_snpid match by SNPID or match by best combination
+coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20,bootstrap=TRUE,no_bootstraps=1000, bed_input_file="/sc/orga/projects/psychgen/resources/COLOC2/files/BED/fourier_ls-all.bed", min_snps=50) { # match_snpid match by SNPID or match by best combination
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
   source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/claudia.R")
@@ -236,6 +238,14 @@ message("Running in parallel")
 registerDoParallel(cores=cores)
 list.probes = unique(eqtl.df$ProbeID[which(eqtl.df$SNPID %in% biom.df$SNPID)])
 eqtl.dfByProbe=  split(eqtl.df, f=as.factor(eqtl.df$ProbeID))
+
+if(!is.null(bed_input_file)){
+    message("Reading LD independent bed file")
+    bed = import.bed(bed_input_file,asRangedData=F) 
+}else{
+    bed = NULL
+}
+
 res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
        ProbeID = as.character(list.probes[i]) ##the character bit is important for probe names that are numbers
        #region.eqtl <- subset(eqtl.df.chr, ProbeID == as.character(list.probes[i]))
@@ -276,17 +286,29 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
           toremove = rownames(dupl[ !duplicated(dupl$SNPID), ])
           merged.data = merged.data[!(rownames(merged.data) %in% toremove),]
          }
- 
          nsnps = nrow(merged.data)
-
          message(ProbeID, ": ", nsnps, " snps in both biomarker and eQTL data. From: ", pos.start, " To: ", pos.end)
-
-         if (nsnps <= 2 ) {
-             message("There are not enough common snps in the region")
-             return(NULL)
+         if(!is.null(bed)){
+            merged.ranges = GRanges(seqnames=merged.data$CHR.biom,IRanges(start=merged.data$POS.biom,end=merged.data$POS.biom))
+            merged.overlaps = findOverlaps(merged.ranges,bed)
+            merged.data$bed_region = bed[merged.overlaps@subjectHits]$name 
+            split_merged_data = split(merged.data, merged.overlaps@subjectHits)
          }
-         if (nsnps > 2 ) {
-
+         else{
+            split_merged_data = list(merged.data) 
+         }
+        res.out = data.frame()
+        for (i in 1:length(split_merged_data)){ 
+            merged.data = split_merged_data[[i]] 
+            print(nrow(merged.data))
+            if(is.null(merged.data$bed_region)){
+                merged.data$bed_region
+            }
+            nsnps = nrow(merged.data)
+         if (nsnps <= min_snps ) {
+             message("There are not enough common snps in the region")
+             next
+         }else{
            # For now run with p-values (better for cc data)
            if (!useBETA) {
                 dataset.biom = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.biom,
@@ -324,13 +346,12 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          lH3.abf <- logdiff(logsum(l1) + logsum(l2), logsum(lsum))  - log(nsnps^2)
          lH4.abf <- logsum(lsum) -log(nsnps)
          all.abf <- c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
-
-         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA)
-
+         message(unique(merged.data$bed_region))
+         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
          if (save.coloc.output) {
            coloc.out = paste(outfolder, "/coloc.output.perSNP/", sep="")
            if (!file.exists(coloc.out)) dir.create(coloc.out)
-           write.table(x=coloc.res$results, file=paste(coloc.out, ProbeID, '_results.tab', sep=''),row.names = FALSE, quote = FALSE, sep = '\t')
+           write.table(x=coloc.res$results, file=paste(coloc.out, ProbeID,"_",unique(merged.data$bed_region), '_results.tab', sep=''),row.names = FALSE, quote = FALSE, sep = '\t')
            res.temp$files= as.character(coloc.out)
          }
 
@@ -408,12 +429,16 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
 
                  res.temp$plotFiles= paste(as.character(paste0(plot.fld, region_name, "_df1.pdf", sep="")), as.character(paste(plot.fld, region_name, "_df2.pdf", sep="")),sep=",")
          }
-
+         res.out= rbind(res.out, res.temp)
+         message("Are we completing this loop")
          #res.all <- rbind(res.all, res.temp)
          #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
-        return(res.temp)
      }
-     return(NULL)
+    }
+      if(nrow(res.temp)==0){
+        return(NULL)
+      }
+      return(res.out)
 }
 
    outfname = paste(outfolder, prefix, '_summary.tab', sep='')
@@ -430,11 +455,26 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
    alphas = optim(c(2,-2,-2,-2), fn, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
    optim.alphas = exp(alphas$par)/ sum(exp(c(alphas$par,alphas$par[2] + alphas$par[3])))
    write(paste("Model with 4 parameters: ", prefix, ": ", paste(optim.alphas, collapse =" , "), sep=""), file = optim.res, append=TRUE)
-
+       
    lkl.frame = res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")]
-   alphas = optim(c(2, -2, -2, -2, -2), fn.pw.gwas, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
-   optim.alphas = exp(alphas$par)/ sum(exp(alphas$par))
-   write(paste("Model with 5 parameters: ", prefix, ": ", paste(optim.alphas, collapse =" , "), sep=""), file = optim.res, append=TRUE)
+
+ alphas = optim(c(2, -2, -2, -2, -2), fn.pw.gwas, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
+  optim.alphas.mle= exp(alphas$par)/ sum(exp(alphas$par))
+ if(bootstrap){
+bootstrap.all <-  foreach(i=1:no_bootstraps, .combine=rbind) %dopar% {
+     llk.frame.temp = lkl.frame[sample(nrow(lkl.frame), size=nrow(lkl.frame), replace=T),]
+     alphas = optim(c(2, -2, -2, -2, -2), fn.pw.gwas, data=llk.frame.temp, method = "Nelder-Mead", control=list(fnscale=-1),hessian=T)
+     optim.alphas = exp(alphas$par)/ sum(exp(alphas$par))
+     return(optim.alphas)
+	}
+    boot_strap.out  <-  paste(outfolder, "boostrap_estimates.txt", sep="")
+    write.table(bootstrap.all, file=boot_strap.out, quote=F, row.names=F)
+    cis = t(apply(bootstrap.all,2,function(x){ quantile(x, probs=c(0.025,0.975))}))
+    ml_estimates = data.frame(low=cis[,1],mle=optim.alphas.mle,hi=cis[,2])
+    bootstrap.summary = paste(outfolder, "bootstrap_mle.txt", sep="")
+    write.table(ml_estimates,file=bootstrap.summary, quote=F, row.names=F)
+ }
+    write(paste("Model with 5 parameters: ", prefix, ": ", paste(optim.alphas.mle, collapse =" , "), sep=""), file = optim.res, append=TRUE)
 
   # compute posteriors using the already computed likelihoods per locus (lH1.abf etc) and the optimized parameters
   # l1 = res.all$lH1.abf[1]; l2 = res.all$lH2.abf[1]; # nsnp = res.all$nsnp[1]

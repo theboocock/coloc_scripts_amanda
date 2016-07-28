@@ -143,11 +143,11 @@ approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
 
 
 lABF.fn.corr  <-  function(z1,V1,z2,sd.prior){
-    r =  
+    r = 1 
 }
 
 lABF.fn.corr.coloc <-  function(z1,V1,z2,V2,sd.prior1,sd.prior2){
-    r = 
+    r = 1
 }
 
 approx.bf.estimates.ave.corr <- function (z1, V1,z2,V2, type, suffix=NULL, sdY1=1,sdY2=1,correlation=0) {
@@ -543,3 +543,21 @@ coloc.abf.snpStats <- function(X1,X2,Y1,Y2,snps=intersect(colnames(X1),colnames(
             dataset2=list(pvalues=pval2, N=nrow(X2), MAF=maf2, snp=snps, type=type2, s=s2))
 }
 
+
+##' Bayesian colocalisation analysis using snpStats objects
+##'
+##' Generates p values via score tests, then runs \code{\link{coloc.abf}}
+##' @title Bayesian colocalisation analysis using snpStats objects
+##' @param X1 genetic data for dataset 1
+##' @param X2 genetic data for dataset 2
+##' @param Y1 response for dataset 1
+##' @param Y2 response for dataset 2
+##' @param snps optional subset of snps to use
+##' @param type1 type of data in Y1, "quant" or "cc"
+##' @param type2 type of data in Y2, "quant" or "cc"
+##' @param s1 the proportion of samples in dataset 1 that are cases (only relevant for case control samples)
+##' @param s2 the proportion of samples in dataset 2 that are cases (only relevant for case control samples)
+##' @param ... parameters passed to \code{\link{coloc.abf}}
+##' @return output of \code{\link{coloc.abf}}
+##' @export
+##' @author Chris Wallace

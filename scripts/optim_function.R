@@ -90,3 +90,4 @@ fn.per.SNP = function(p, data) {
   sumlkl = sum(apply(lkl.frame.temp, MAR = 1, FUN = logsum)) 
 }
 
+
