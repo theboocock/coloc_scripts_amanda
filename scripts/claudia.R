@@ -331,8 +331,8 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_sdy=TRUE,correlation=0
         if(!ave) {
       df <- approx.bf.estimates(z=d$beta/sqrt(d$varbeta),
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
-        }else if(ave){ 
-      df <- approx.bf.estimates.ave(z=d$beta/sqrt(d$varbeta),
+        }else if(ave){
+        df <- approx.bf.estimates.ave(z=d$beta/sqrt(d$varbeta),
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
         }
     }
@@ -424,7 +424,6 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_sdy=TRUE,correlation=0
 ##' @export
 coloc.abf <- function(dataset1, dataset2, MAF=NULL, 
                       p1=1e-4, p2=1e-4, p12=1e-5, correlation=0) {
-
   if(!is.list(dataset1) || !is.list(dataset2))
     stop("dataset1 and dataset2 must be lists.")
   if(!("MAF" %in% names(dataset1)) & !is.null(MAF))

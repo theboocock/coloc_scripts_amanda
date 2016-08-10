@@ -206,8 +206,7 @@ for (chr in commonChr){
                            N = merged.data$N.biom, s=merged.data$s1, type = type, MAF=merged.data$MAF)
                 dataset.eqtl = list(snp = merged.data$SNPID, beta = merged.data$BETA.eqtl, varbeta= (merged.data$SE.eqtl)^2,
                            N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF)
-                #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
-         }
+            }
          suppressMessages(capture.output(coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)))
          pp0       <- as.numeric(coloc.res$summary[2])
          pp1       <- as.numeric(coloc.res$summary[3])

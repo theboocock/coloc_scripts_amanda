@@ -14,7 +14,7 @@ source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/functions_coloc_likeli
 # data= fread(fname, stringsAsFactors=FALSE)
 biom.df = formatColoc(fname = biom.fname, type=type, N=NA, Ncases=NA, info_filter=0, maf_filter=0, fread=T, eqtl=FALSE)
 eqtl.df = formatColoc(fname = eqtl.fname, type="quant", N=n_eqtl, Ncases=NA, info_filter=0, maf_filter=0, fread=T, eqtl=TRUE)
-
+biom.df$type = type
 p12=1e-6 # this is for coloc with set priors
 plot = TRUE
 useBETA=TRUE

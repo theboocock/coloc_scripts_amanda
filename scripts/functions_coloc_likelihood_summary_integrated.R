@@ -41,7 +41,7 @@ if (plot) {
   rsq_filter = 0.3 #Imputation quality filter applied to datasets
 
 ###
-if ("Ncases" %in% names(biom.df)) cc=TRUE else cc=FALSE
+if (unique(biom.df$type) == "cc") cc=TRUE else cc=FALSE
 #if (all(c("CHR", "POS") %in% names(biom.df))) haveCHRPOS.biom=TRUE else haveCHRPOS.biom=FALSE
 #if (all(c("CHR", "POS") %in% names(eqtl.df))) haveCHRPOS.eqtl=TRUE else haveCHRPOS.eqtl=FALSE
 maf.eqtl = ifelse("MAF" %in% names(eqtl.df), TRUE, FALSE)
@@ -56,9 +56,10 @@ if (!maf.eqtl & !maf.biom) message("There is no MAF information in neither datas
 #if (!all(  cols.biom %in% names(biom.df))) stop("These columns are missing from the biomarker data: ", cols.biom[!cols.biom %in% names(biom.df)])
 
 #if ("PVAL" %in% names(biom.df))
+
 if (useBETA) {
    cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "ProbeID","N") # We need the N only if we do the sdYest step...
-   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE")# We need the N only if we do the sdYest step...
+   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE","N","type")# We need the N only if we do the sdYest step...
    }
 if (!useBETA) {
    cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "ProbeID", "N")
@@ -83,6 +84,9 @@ if (length(info.columns) > 0)        {
 # use only one of the MAFs from the two datasets
 # First check if there is a MAF in eQTL data and use this, if not take the one in biom data
 # Filter by MAF
+
+
+
 if (maf.eqtl) {
    cols.eqtl = c(cols.eqtl, "MAF")
    eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
@@ -228,16 +232,30 @@ if (onlyOverlap) {
 
 #probes = unique(eqtl.df$ProbeID)
 ### split biomarker data by chromosome
-message('For maximum speed, split the data by chromosome first')
 # if don't have chr pos info?
 
 # lapply(names(dataByChr), function(x){write.table(dataByChr[[x]], row.names = FALSE, quote = FALSE, col.names = TRUE, sep=" ", file = paste(DIR, "/data/", x, sep = ""))})
 ##################################################### now start the loop
 # Now go over all regions that overlap between eQTL table and input.data
+if("N" %in% colnames(eqtl.df)){
+    colnames(eqtl.df)[which("N" == colnames(eqtl.df))] = "N.eqtl"
+}
+if("N" %in% colnames(biom.df)){
+    colnames(biom.df)[which("N" == colnames(biom.df))] = "N.biom"
+    ## TODO: add phenotypic variance calculation from quantative traits.
+    if(unique(biom.df$type) == "quant"){
+        biom.df$sdY.biom= sdY.est(biom.df$SE^2, biom.df$MAF, biom.df$N.biom)
+        message(paste("Biomarker phenotypic is ",biom.df$sdY.biom[1]^2))
+    }
+}
+
+
+
 message("Running in parallel")
 registerDoParallel(cores=cores)
 list.probes = unique(eqtl.df$ProbeID[which(eqtl.df$SNPID %in% biom.df$SNPID)])
 eqtl.dfByProbe=  split(eqtl.df, f=as.factor(eqtl.df$ProbeID))
+
 
 if(!is.null(bed_input_file)){
     message("Reading LD independent bed file")
@@ -317,13 +335,12 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
                            N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF)
            } else {
                 dataset.biom = list(snp = merged.data$SNPID, beta = merged.data$BETA.biom, varbeta= (merged.data$SE.biom)^2,
-                           s=merged.data$s1, type = type, MAF=merged.data$MAF)
+                           s=merged.data$s1, type = type, MAF=merged.data$MAF,N=merged.data$N.biom, sdY=unique(merged.data$sdY.biom))
                 dataset.eqtl = list(snp = merged.data$SNPID, beta = merged.data$BETA.eqtl, varbeta= (merged.data$SE.eqtl)^2,
-                           N = as.numeric(merged.data$N), type = "quant", MAF=merged.data$MAF)
+                           N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF)
                 #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
          }
-         coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)
-         suppressMessages(capture.output(coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)))
+         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12))
          pp0       <- as.numeric(coloc.res$summary[2])
          pp1       <- as.numeric(coloc.res$summary[3])
          pp2       <- as.numeric(coloc.res$summary[4])
@@ -334,7 +351,6 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          min.pval.biom <- min(merged.data$PVAL.biom)
          min.pval.eqtl <- min(merged.data$PVAL.eqtl)
          best.causal = as.character(coloc.res$results$snp[which.max(coloc.res$results$SNP.PP.H4)])
-
          ## Per locus likelihood
          # Take the logsum of the 4 models
          l1 = coloc.res$results$lABF.df1
@@ -365,7 +381,7 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
                 pvalue_BF_df = as.data.frame(coloc.res[2])
                 #region_name <- paste(ProbeID,'.', biom.names[j], ".chr", chr.name, "_", pos.start, "_", pos.end, sep= '')
                 region_name <- paste(prefix, ".", ProbeID, ".chr", chrom, "_", pos.start, "_", pos.end, sep= '')
-                pvalue_BF_file <- paste(pval.fld, 'pval_', region_name, '.txt', sep="")
+                pvalue_BF_file <- paste(pval.fld, 'pval_', unique(merged.data$bed_region), '.txt', sep="")
 
                 ### LocusZoom arguments:
                 pvalue_BF_df$chr = chrom 
@@ -435,7 +451,7 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
      }
     }
-      if(nrow(res.temp)==0){
+      if(nrow(res.out)==0){
         return(NULL)
       }
       return(res.out)
@@ -480,7 +496,7 @@ bootstrap.all <-  foreach(i=1:no_bootstraps, .combine=rbind) %dopar% {
   # l1 = res.all$lH1.abf[1]; l2 = res.all$lH2.abf[1]; # nsnp = res.all$nsnp[1]
   # first = combine.abf.locus(l0.locus=res.all$lH0.abf[1], l1.locus=res.all$lH1.abf[1], l2.locus=res.all$lH2.abf[1], l3.locus=res.all$lH3.abf[1], l4.locus=res.all$lH4.abf[1], a0, a1, a2, a3, a4) 
    
-   new.coloc = apply(res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")], 1, function(x) combine.abf.locus(x[1],x[2], x[3], x[4], x[5], a0 = optim.alphas[1], a1 = optim.alphas[2], a2 = optim.alphas[3], a3 = optim.alphas[4], a4 = optim.alphas[5]))
+   new.coloc = apply(res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")], 1, function(x) combine.abf.locus(x[1],x[2], x[3], x[4], x[5], a0 = optim.alphas.mle[1], a1 = optim.alphas.mle[2], a2 = optim.alphas.mle[3], a3 = optim.alphas.mle[4], a4 = optim.alphas.mle[5]))
    new.coloc=t(new.coloc)
 
    res.all = cbind.data.frame(res.all, new.coloc)
