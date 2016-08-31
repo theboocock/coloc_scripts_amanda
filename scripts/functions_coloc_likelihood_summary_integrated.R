@@ -3,6 +3,18 @@ library(doParallel)
 library(GenomicRanges)
 library(rtracklayer)
 
+complement_snp = function(x){
+    as = x =="A"
+    ts = x == "T"
+    gs = x == "G"
+    cs = x == "C"
+    x[as] = "T"
+    x[ts] = "A"
+    x[gs] = "C"
+    x[cs] = "G"
+    return(x)
+}
+
 merge_results  <- function(a, b){
     if(is.null(a) & is.null(b)){
         return(NULL)
@@ -14,7 +26,7 @@ merge_results  <- function(a, b){
         return(rbind(a,b))
     }
 }
-coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20,bootstrap=TRUE,no_bootstraps=1000, bed_input_file="/sc/orga/projects/psychgen/resources/COLOC2/files/BED/fourier_ls-all.bed", min_snps=50) { # match_snpid match by SNPID or match by best combination
+coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20,bootstrap=F,no_bootstraps=1000, min_snps=50, bed_input_file=NULL){
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
   source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/claudia.R")
@@ -46,7 +58,7 @@ if (unique(biom.df$type) == "cc") cc=TRUE else cc=FALSE
 #if (all(c("CHR", "POS") %in% names(eqtl.df))) haveCHRPOS.eqtl=TRUE else haveCHRPOS.eqtl=FALSE
 maf.eqtl = ifelse("MAF" %in% names(eqtl.df), TRUE, FALSE)
 maf.biom = ifelse("MAF" %in% names(biom.df), TRUE, FALSE)
-if (!maf.eqtl & !maf.biom) message("There is no MAF information in neither datasets, looking for frequency column in eQTL data")
+if (!maf.eqtl & !maf.biom) message("There is no MAF information in neither datasets, looking for frequency column") 
 
 ## check all columns exist
 #if (useBETA) cols.eqtl = c("SNPID", "CHR", "POS", "BETA", "SE", "PVAL", "ProbeID", "N") else cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "ProbeID", "N")
@@ -58,16 +70,37 @@ if (!maf.eqtl & !maf.biom) message("There is no MAF information in neither datas
 #if ("PVAL" %in% names(biom.df))
 
 if (useBETA) {
-   cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "ProbeID","N") # We need the N only if we do the sdYest step...
-   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE","N","type")# We need the N only if we do the sdYest step...
+   cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "ProbeID","N","A1","A2") # We need the N only if we do the sdYest step...
+   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE","N","type","A1","A2")# We need the N only if we do the sdYest step...
    }
 if (!useBETA) {
-   cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "ProbeID", "N")
-   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "N")
+   cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "ProbeID", "N","A1","A2")
+   cols.biom = c("SNPID", "CHR", "POS", "PVAL", "N","A1","A2")
    }
-if (!all(  cols.eqtl %in% names(eqtl.df))) stop("These columns are missing from the eQTL data: ", cols.eqtl[!cols.eqtl %in% names(eqtl.df)])
-if (cc & !useBETA) cols.biom = c(cols.biom, "Ncases")
-if (!all(  cols.biom %in% names(biom.df))) stop("These columns are missing from the biomarker data: ", cols.biom[!cols.biom %in% names(biom.df)])
+
+no_allele_merge =F
+if (!all(cols.eqtl %in% names(eqtl.df))){
+    if(all(cols.eqtl[-which(cols.eqtl %in% c("A1","A2"))] %in% names(eqtl.df))){
+        stop("These columns are missing from the eQTL data: ", cols.eqtl[!cols.eqtl %in% names(eqtl.df)])
+    }else{
+        no_allele_merge = T
+        cols.eqtl = cols.eqtl[-which(cols.eqtl %in% c("A1","A2"))]
+
+        message("Warning allele columns missing, will sometimes merge SNPs with indels")
+    }
+}
+
+
+if (!all(  cols.biom %in% names(biom.df))){ 
+    if(!all( cols.biom[-which(cols.biom %in% c("A1","A2"))] %in% names(biom.df))){
+        print(all(c("A1","A2") %in% names(biom.df)))
+        stop("These columns are missing from the biomarker data: ", cols.biom[!cols.biom %in% names(biom.df)])
+    }else{
+        no_allele_merge = T
+        cols.biom = cols.biom[-which(cols.biom %in% c("A1","A2"))]
+        message("Warning allele columns missing, will sometimes merge SNPs with indels")
+    }
+}
 
 
 #####################
@@ -89,29 +122,25 @@ if (length(info.columns) > 0)        {
 
 if (maf.eqtl) {
    cols.eqtl = c(cols.eqtl, "MAF")
+    maf.eqtl = TRUE
    eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
-   }
-if (!maf.eqtl & maf.biom) {
+}else if("F" %in% names(eqtl.df)){
+    eqtl.df$MAF = ifelse(eqtl.df$F<0.5, eqtl.df$F, 1-eqtl.df$F)
+    eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
+    maf.eqtl = TRUE
+    cols.eqtl = c(cols.eqtl, "F")
+}
+if (maf.biom) {
    cols.biom = c(cols.biom, "MAF")
    biom.df = subset(biom.df, biom.df$MAF > maf_filter)
-   }
-# Otherwise look for a frequency column
-if (!maf.eqtl & !maf.biom) {
-   freq.eqtl = ifelse("F" %in% names(eqtl.df), TRUE, FALSE)
-   freq.biom = ifelse("F" %in% names(biom.df), TRUE, FALSE)
-   if (freq.eqtl) {
-   #"^F$|freq|FRQ|MAF"
-   eqtl.df$MAF = ifelse(eqtl.df$F<0.5, eqtl.df$F, 1-eqtl.df$F)
-   eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
-   maf.eqtl = TRUE
-   cols.eqtl = c(cols.eqtl, "MAF")
-   }else if(freq.biom){
-       message("Using frequency from biomarker")
-       biom.df$MAF = ifelse(biom.df$F<0.5, biom.df$F, 1-biom.df$F)
-       biom.df = subset(biom.df, biom.df$MAF > maf_filter)
-       maf.biom= TRUE
-       cols.biom = c(cols.biom, "MAF")
-   }
+   maf.biom= TRUE
+}else if("F" %in% names(biom.df)){
+   biom.df$MAF = ifelse(biom.df$F<0.5, biom.df$F, 1-biom.df$F)
+   biom.df = subset(biom.df, biom.df$MAF > maf_filter)
+   maf.biom= TRUE
+   cols.biom = c(cols.biom, "F")
+}else{
+   stop("Could not find MAF/F in Biom.")
 }
 
 if (!maf.eqtl & !maf.biom) stop("There is no MAF information in neither datasets")
@@ -185,12 +214,23 @@ if (find_best_column==3) {
     names(eqtl.df)[names(eqtl.df)=="SNPID"] <- "SNPID2"
     names(eqtl.df)[names(eqtl.df)=="chrpos"] <- "SNPID"
 }
-
 } # if !match_snpid
 #####################
   biom.df = biom.df[,cols.biom]
+  if("F" %in% names(biom.df)){
+    colnames(biom.df)[which("F" == names(biom.df))] = "MAF.biom"
+  }   
+  if("MAF" %in% names(biom.df)){
+    colnames(biom.df)[which("MAF" == names(biom.df))] = "MAF.biom"
+  }
   eqtl.df = eqtl.df[,cols.eqtl]
-  # Remove missing data
+  if("F" %in% names(eqtl.df)){
+    colnames(eqtl.df)[which("F" ==  names(eqtl.df))] = "MAF.eqtl"
+  }   
+  if("MAF" %in% names(eqtl.df)){
+    colnames(eqtl.df)[which("MAF" == names(eqtl.df))] = "MAF.eqtl"
+  }
+  # Remove misqsing data
   eqtl.df = eqtl.df[complete.cases(eqtl.df),]
   biom.df = biom.df[complete.cases(biom.df),]
 
@@ -240,33 +280,30 @@ if (onlyOverlap) {
 if("N" %in% colnames(eqtl.df)){
     colnames(eqtl.df)[which("N" == colnames(eqtl.df))] = "N.eqtl"
 }
-if("N" %in% colnames(biom.df)){
-    colnames(biom.df)[which("N" == colnames(biom.df))] = "N.biom"
-    ## TODO: add phenotypic variance calculation from quantative traits.
-    if(unique(biom.df$type) == "quant"){
-        biom.df$sdY.biom= sdY.est(biom.df$SE^2, biom.df$MAF, biom.df$N.biom)
-        message(paste("Biomarker phenotypic is ",biom.df$sdY.biom[1]^2))
-    }
-}
 
-
+#biom.df$sdY.biom = sdY.est((biom.df$SE)^2,biom.df$MAF,biom.df$N,biom.df$BETA) 
+biom.df$sdY.biom = sdY.est((biom.df$SE)^2,biom.df$MAF,biom.df$N,biom.df$BETA)
+message(paste("Phenotypic variance forbiom is ", unique(biom.df$sdY.biom^2)))
 
 message("Running in parallel")
 registerDoParallel(cores=cores)
 list.probes = unique(eqtl.df$ProbeID[which(eqtl.df$SNPID %in% biom.df$SNPID)])
 eqtl.dfByProbe=  split(eqtl.df, f=as.factor(eqtl.df$ProbeID))
 
-
 if(!is.null(bed_input_file)){
     message("Reading LD independent bed file")
-    bed = import.bed(bed_input_file,asRangedData=F) 
+    bed = import.bed(bed_input_file)
 }else{
     bed = NULL
 }
 
+
+#for(i in 1:length(list.probes)){
+
 res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
        ProbeID = as.character(list.probes[i]) ##the character bit is important for probe names that are numbers
        #region.eqtl <- subset(eqtl.df.chr, ProbeID == as.character(list.probes[i]))
+       print(ProbeID)
        region.eqtl <- eqtl.dfByProbe[[as.character(ProbeID)]]
        pos.start <- min(region.eqtl$POS)
        pos.end   <- max(region.eqtl$POS)
@@ -281,7 +318,7 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
 
        # Loop over each biomarker 
        # message(ProbeID, ": ", length(matches), " snps in biomarkers. From: ", pos.start, " To: ", pos.end)
-
+        
       if (cc & !useBETA) {
           type= "cc"
           #  s = proportion of individuals that are cases (cases / N)
@@ -292,15 +329,31 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
           region.biom$s1=rep(0.5, length(region.biom$N)) ## This will be ignored since the type is "quant"
          }
          merged.data <- merge(region.biom, region.eqtl, by = "SNPID",  suffixes=c(".biom", ".eqtl"))
+         if(!maf.eqtl){
+            merged.data$MAF.eqtl = merged.data$MAF.biom
+         }
          # Remove the pvalues at zero, otherwise it gives an error!
+      # Check thatthe alleles match
+      if(!no_allele_merge){
+          match_correct = toupper(merged.data$A1.biom) == toupper(merged.data$A1.eqtl) & toupper(merged.data$A2.biom)== toupper(merged.data$A2.eqtl)
+          match_flip = toupper(merged.data$A1.biom) == toupper(merged.data$A2.eqtl) & toupper(merged.data$A2.biom) == toupper(merged.data$A2.eqtl)
+          match_comp_one = toupper(merged.data$A1.biom) == complement_snp(toupper(merged.data$A1.eqtl)) & toupper(merged.data$A2.biom)== complement_snp(toupper(merged.data$A2.eqtl))
+     
+          match_comp_two = toupper(merged.data$A1.biom) == complement_snp(toupper(merged.data$A2.eqtl)) & toupper(merged.data$A2.biom) == complement_snp(toupper(merged.data$A2.eqtl))
+
+          snp_allele_match = match_flip | match_correct | match_comp_one | match_comp_two
+          print(merged.data[!snp_allele_match,])
+          # TODO: Make generic so it works without alleles
+          message(sum(snp_allele_match), " SNPs out of ", length(snp_allele_match), " had the correct alleles, discarding SNPs without the correct alleles")
+          merged.data = merged.data[snp_allele_match,]
+      }
       if (!useBETA) merged.data = merged.data[merged.data$PVAL.biom>0 & merged.data$PVAL.eqtl>0,]
          n_occur <- data.frame(table(merged.data$SNPID))
          dupl = merged.data[merged.data$SNPID %in% n_occur$Var1[n_occur$Freq > 1],]
          message("There are ", nrow(dupl)/2, " duplicated SNP names in the data")
          if (nrow(dupl)>0) {
-          write.table(merged.data,file='wow.txt', row.names=F, col.names=T)
           #removed_list <- rbind(removed_list, data.frame(Marker_removed = dupl$SNPID, reason = "Duplicated SNPs"))
-          dupl=dupl[order(dupl$MAF, decreasing=T),]
+          dupl=dupl[order(dupl$MAF.biom, decreasing=T),]
           toremove = rownames(dupl[ !duplicated(dupl$SNPID), ])
           merged.data = merged.data[!(rownames(merged.data) %in% toremove),]
          }
@@ -309,18 +362,17 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          if(!is.null(bed)){
             merged.ranges = GRanges(seqnames=merged.data$CHR.biom,IRanges(start=merged.data$POS.biom,end=merged.data$POS.biom))
             merged.overlaps = findOverlaps(merged.ranges,bed)
-            merged.data$bed_region = bed[merged.overlaps@subjectHits]$name 
-            split_merged_data = split(merged.data, merged.overlaps@subjectHits)
+            merged.data$bed_region = bed[merged.overlaps@to]$name 
+            split_merged_data = split(merged.data, merged.overlaps@to)
          }
          else{
             split_merged_data = list(merged.data) 
          }
         res.out = data.frame()
-        for (i in 1:length(split_merged_data)){ 
+        for (i in 1:length(split_merged_data)){
             merged.data = split_merged_data[[i]] 
-            print(nrow(merged.data))
             if(is.null(merged.data$bed_region)){
-                merged.data$bed_region
+                merged.data$bed_region=NA
             }
             nsnps = nrow(merged.data)
          if (nsnps <= min_snps ) {
@@ -330,14 +382,14 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
            # For now run with p-values (better for cc data)
            if (!useBETA) {
                 dataset.biom = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.biom,
-                           N = merged.data$N.biom, s=merged.data$s1, type = type, MAF=merged.data$MAF)
+                           N = merged.data$N.biom, s=merged.data$s1, type = type, MAF=merged.data$MAF.biom)
                 dataset.eqtl = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.eqtl,
-                           N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF)
+                           NI = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF.eqtl)
            } else {
                 dataset.biom = list(snp = merged.data$SNPID, beta = merged.data$BETA.biom, varbeta= (merged.data$SE.biom)^2,
-                           s=merged.data$s1, type = type, MAF=merged.data$MAF,N=merged.data$N.biom, sdY=unique(merged.data$sdY.biom))
+                           s=merged.data$s1, type = type, MAF=merged.data$MAF.biom,N=merged.data$N.biom, sdY=unique(merged.data$sdY.biom))
                 dataset.eqtl = list(snp = merged.data$SNPID, beta = merged.data$BETA.eqtl, varbeta= (merged.data$SE.eqtl)^2,
-                           N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF)
+                           N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF.eqtl)
                 #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
          }
          (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12))
@@ -367,13 +419,18 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          if (save.coloc.output) {
            coloc.out = paste(outfolder, "/coloc.output.perSNP/", sep="")
            if (!file.exists(coloc.out)) dir.create(coloc.out)
+           if(all(is.na(merged.data$bed_region))){
+           write.table(x=coloc.res$results, file=paste(coloc.out, ProbeID,'_results.tab', sep=''),row.names = FALSE, quote = FALSE, sep = '\t')
+           }else{
            write.table(x=coloc.res$results, file=paste(coloc.out, ProbeID,"_",unique(merged.data$bed_region), '_results.tab', sep=''),row.names = FALSE, quote = FALSE, sep = '\t')
            res.temp$files= as.character(coloc.out)
+           }
          }
 
 
          ############# PLOT
-         if (plot & (pp4 > 0.2 | pp3 >=0.2) & nsnps > 2) {
+         # For now disable.
+         if (plot & (pp4 > 0.2 | pp3 >=0.2) & nsnps > 2 & F) {
          # For plotting, input called chr has to be numeric!
          # Make sure this is the case otherwise no plot is produced (because the locusZoom script coerces this value to numeric and NA is produced if not numeric
          chrom = gsub("chr","", chrom)
@@ -445,9 +502,7 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
 
                  res.temp$plotFiles= paste(as.character(paste0(plot.fld, region_name, "_df1.pdf", sep="")), as.character(paste(plot.fld, region_name, "_df2.pdf", sep="")),sep=",")
          }
-         res.out= rbind(res.out, res.temp)
-         message("Are we completing this loop")
-         #res.all <- rbind(res.all, res.temp)
+         res.out = rbind(res.out,res.temp)
          #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
      }
     }
@@ -510,6 +565,7 @@ bootstrap.all <-  foreach(i=1:no_bootstraps, .combine=rbind) %dopar% {
    addGeneName= FALSE
    if (addGeneName) {
    res.all$Gene.name = res.all$ProbeID
+   # TODO ANnotation output filewith gene name
    biomart=FALSE # it doesn't work sometimes -- cannot connect etc
       if (biomart) {
       library(biomaRt)

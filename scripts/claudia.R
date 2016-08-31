@@ -105,7 +105,7 @@ lABF.fn <- function (z, V, sd.prior=0.15) {
   #return(list("lABF" = lABF, "r" = r))
 }
 
-approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
+approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=d$beta) {
   sd.prior <- if (type == "quant") { 0.15*sdY } else { 0.2 }
   # sd.prior = 0.44
   lABF <- lABF.fn(z, V, sd.prior)
@@ -116,7 +116,7 @@ approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
   return(ret)
 }
 
-##approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
+##approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=d$beta) {
 ##  print("Using the approx.bf.estimates.ave function!!!!!")
 ##  listVec <- list(lABF.fn(z, V, sd.prior=sqrt(0.01)), lABF.fn(z, V, sd.prior=sqrt(0.1)), lABF.fn(z, V, sd.prior=sqrt(0.5)))
 ##  m <- do.call(cbind, listVec)
@@ -131,8 +131,19 @@ approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
 ##}
 
 
+
+var_mle_from_z = function(z,n,maf){
+    var_mle= 1/(2*maf*(1-maf) * ( n + z^2))
+    return(var_mle)
+}
+
+approx.bf.estimates.pvalue  <- function(z, n, maf, suffix=NULL, sdY=1){
+  V = var_mle_from_z(z,n,maf)
+  return(approx.bf.estimates.ave(z, V, type, suffix=suffix)) 
+} 
+
 approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
-  listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01*sdY)), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1*sdY)), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5*sdY)))
+  listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01)*sdY), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1)*sdY), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5)*sdY))
   m <- do.call(cbind, listVec)
   lABF <- apply(m, 1, function(x) logsum(x) -log(3))
   ret <- data.frame(V, z, m, lABF)
@@ -173,7 +184,7 @@ approx.bf.estimates.ave.corr <- function (z1, V1,z2,V2, type, suffix=NULL, sdY1=
 
 
 
-#approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=1) {
+#approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=d$beta) {
 #  sd.prior <- if (type == "quant") { 0.15*sdY } else { 0.2 }
 #  r <- sd.prior^2/(sd.prior^2 + V)
 #  lABF = 0.5 * (log(1 - r) + (r * z^2))
@@ -183,7 +194,7 @@ approx.bf.estimates.ave.corr <- function (z1, V1,z2,V2, type, suffix=NULL, sdY1=
 #  return(ret)
 #}
 
-#approx.bf.estimates.sd.prior <- function (z, V, type, suffix=NULL, sdY=1, sd.prior=0.15) {
+#approx.bf.estimates.sd.prior <- function (z, V, type, suffix=NULL, sdY=d$beta, sd.prior=0.15) {
 #  r <- sd.prior^2/(sd.prior^2 + V)
 #  lABF = 0.5 * (log(1 - r) + (r * z^2))
 #  ret <- data.frame(V, z, r, lABF)
@@ -272,13 +283,9 @@ fn.pw.gwas = function(p, data) {
 ##' @return estimated standard deviation of Y
 ##' 
 ##' @author Chris Wallace
-sdY.est <- function(vbeta, maf, n) {
-  oneover <- 1/vbeta
-  nvx <- 2 * n * maf * (1-maf)
-  m <- lm(nvx ~ oneover - 1)
-  if(coef(m)[["oneover"]] < 0)
-    stop("Trying to estimate trait variance from betas, and getting negative estimate.  Something is wrong.  You can 'fix' this by supplying an estimate of trait standard deviation yourself, as sdY=<value> in the dataset list.")
-  return(sqrt(coef(m)[["oneover"]]))
+sdY.est <- function(vbeta, maf, n, beta) {
+  vars = 2 *maf * ( 1- maf) * n * vbeta * (n -1 ) + 2 *maf * ( 1- maf) * n * beta^2 
+  return(sqrt(median(vars/(n-1))))
 }
 
 
@@ -309,7 +316,7 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_sdy=TRUE,correlation=0
     if(estimate_sdy){
         if(d$type == 'quant' & !('sdY' %in% nd)){
            if("N" %in% nd){ 
-                d$sdY <- sdY.est(d$varbeta, d$MAF, d$N)
+                d$sdY <- sdY.est(d$varbeta, d$MAF, d$N,d$beta)
            }else{
                 d$sdY  <- 1
            }
@@ -326,7 +333,7 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_sdy=TRUE,correlation=0
         return(df)
     }
     # if there are negative value, then it is a logOR?
-    if (length(d$beta[d$beta<0])>0) log=TRUE  else log=FALSE 
+    if (length(d$beta[d$beta<0])>0) log=FALSE else log=TRUE
     if (d$type == "quant") {
         if(!ave) {
       df <- approx.bf.estimates(z=d$beta/sqrt(d$varbeta),
@@ -339,12 +346,21 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_sdy=TRUE,correlation=0
     if (d$type=="cc" & log)  {
     if (!ave) {
        df <- approx.bf.estimates(z=log(d$beta)/sqrt(d$varbeta),
-                              V=d$varbeta, type=d$type, suffix=suffix, sdY=1)
+                              V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
        }
     if (ave) {
         df <- approx.bf.estimates.ave(z=log(d$beta)/sqrt(d$varbeta),
-                              V=d$varbeta, type=d$type, suffix=suffix, sdY=1)
+                              V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
        }
+    }else if(d$type =="cc"){
+        if (!ave) {
+           df <- approx.bf.estimates(z=(d$beta)/sqrt(d$varbeta),
+                                  V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+           }
+        if (ave) {
+            df <- approx.bf.estimates.ave(z=(d$beta)/sqrt(d$varbeta),
+                                  V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
+           }
     }
     df$snp <- as.character(d$snp)
     return(df)

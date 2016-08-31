@@ -5,8 +5,9 @@ type=args[3]
 outfolder = args[4]
 prefix = args[5]
 n_eqtl = args[6]
+options(error = quote({dump.frames(to.file=TRUE); q()}))
 
-source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/functions_coloc_pipeline.R")
+source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/formatColoc.R")
 source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/functions_coloc_likelihood_summary_integrated.R")
 
 # filter by maf and imp quality when doing colocalization
@@ -20,5 +21,6 @@ plot = TRUE
 useBETA=TRUE
 save.coloc.output=TRUE
 
-res = coloc.eqtl.biom(eqtl.df=eqtl.df, biom.df=biom.df, p12=p12, useBETA=TRUE, outfolder=outfolder, prefix=prefix, plot=plot, save.coloc.output=TRUE, match_snpid=FALSE)
+
+res = coloc.eqtl.biom(eqtl.df=eqtl.df, biom.df=biom.df, p12=p12, useBETA=TRUE, outfolder=outfolder, prefix=prefix, plot=plot, save.coloc.output=TRUE, match_snpid=F)
 
