@@ -26,6 +26,30 @@ merge_results  <- function(a, b){
         return(rbind(a,b))
     }
 }
+
+# Remove duplicated IDs (duplicated snps and indels, keep only snps if have allele info)
+remove_dupl = function(data) {
+    n_occur <- data.frame(table(data$SNP))
+    dupl = data[data$SNP %in% n_occur$Var1[n_occur$Freq > 1],]
+         if (nrow(dupl)>0) {
+          #removed_list <- rbind(removed_list, data.frame(Marker_removed = dupl$SNPID, reason = "Duplicated SNPs"))
+          if (all(c("A1","A2") %in% names(data))) {
+             dupl <- transform(dupl, n=nchar(as.character(dupl$A1)) + nchar(as.character(dupl$A2)))
+             dupl=dupl[order(dupl$n, decreasing=T),]
+          } else {
+             dupl=dupl[order(dupl$MAF, decreasing=T),]
+          }
+          toremove = rownames(dupl[ !duplicated(dupl$SNP), ])
+          #if (length(toremove)>0) {
+            removed_list <- data.frame(Marker_removed = dupl$SNP[!duplicated(dupl$SNP)], reason = "Duplicated SNPs")
+          data = data[!(rownames(data) %in% toremove),]
+          message("Removed ", length(toremove), " duplicated SNP names")
+          }  else {
+          removed_list <- data.frame(Marker_removed = NA, reason = "Duplicated SNPs")
+          }
+    return(list(data, removed_list))
+}
+
 coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20,bootstrap=F,no_bootstraps=1000, min_snps=50, bed_input_file=NULL){
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
@@ -238,43 +262,36 @@ if (find_best_column==3) {
 
 ###################
 # Find ProbeIDs overlapping with biom.df
-  gap = 2000000 # cushion from start and end of probe/gene
+if(!is.null(bed_input_file)){
+    message("Reading LD independent bed file")
+    bed = import.bed(bed_input_file)
+    bed = bed[bed$ProbeID %in% unique(eqtl.df$ProbeID),]
+}else{
+   library(data.table)
+   DT <- as.data.table(eqtl.df)
+   expr_table <- DT[, list(CHR= unique(CHR), START = min(POS), STOP = max(POS), minP = min(PVAL)), by = ProbeID]
+   expr_table <- data.frame(expr_table)
+   message("There are ", nrow(expr_table), " ProbeIDs in the eQTL data")
 
-# To create summary table: this allows for duplicated ProbeIDs:
-# t=eqtl.df[eqtl.df$POS == ave(eqtl.df$POS, eqtl.df$ProbeID, FUN=min),]
-# table(duplicated(t$ProbeID)); while this does not:
-# t2 = eqtl.df[sapply(split(1:nrow(eqtl.df),eqtl.df$ProbeID),function(x) x[which.min(eqtl.df$POS[x])]),]
-#t3 = do.call("cbind", list((eqtl.df[eqtl.df$POS == ave(eqtl.df$POS, eqtl.df$ProbeID, FUN=min),]), eqtl.df[eqtl.df$POS == ave(eqtl.df$POS, eqtl.df$ProbeID, FUN=max),]))
-
-eqtlTable = FALSE
-if (eqtlTable) {
-library(data.table)
-DT <- as.data.table(eqtl.df)
-expr_table <- DT[, list(CHR= unique(CHR), START = min(POS), STOP = max(POS), minP = min(PVAL)), by = ProbeID]
-message("There are ", nrow(expr_table), " ProbeIDs in the eQTL data")
+   decreaseGap = FALSE
+   if (decreaseGap) {
+      targetGap=100000
+      currentGap = (expr_table$STOP - expr_table$START)/2
+      if (targetGap < currentGap[1]) {
+        expr_table$START = expr_table$START + currentGap
+        expr_table$STOP = expr_table$STOP - currentGap
+      }
+   }
+   bed = expr_table
 }
 
-onlyOverlap = FALSE
-if (onlyOverlap) {
-  library(GenomicRanges)
-  my.BM.GRanges <- GRanges(seqnames = biom.df$CHR,
-                              IRanges(start = biom.df$POS, end= biom.df$POS))  ##some start positions seem negative
+if (!all(c("ProbeID", "CHR", "START", "STOP") %in% names(bed))) stop("Bed file is missing info")
+bed$ProbeID = as.character(bed$ProbeID)
+bed$CHR=as.numeric(as.character(bed$CHR))
+bed$START=as.numeric(bed$START)
+bed$STOP=as.numeric(bed$STOP)
+message("Looping through ", nrow(bed), " genes from the eQTL data")
 
-  my.QTL.GRanges <- GRanges(seqnames = expr_table$CHR,
-                              IRanges(start= ifelse(expr_table$START-gap<0, 0, expr_table$START-gap), end= expr_table$STOP+gap))
-
-  my.overlap <- findOverlaps(query = my.BM.GRanges, subject = my.QTL.GRanges) 
-  regions.of.interest <- unique(my.overlap@subjectHits)
-  expr_table_interesting <- expr_table[ regions.of.interest, ]
-  message("There are ", nrow(expr_table_interesting), " ProbeIDs (+/- gap) that overlap with at least 1 SNP in the biom data")
-}
-#  expr_table_interesting = unique(expr_table_interesting$ProbeID)
-
-#probes = unique(eqtl.df$ProbeID)
-### split biomarker data by chromosome
-# if don't have chr pos info?
-
-# lapply(names(dataByChr), function(x){write.table(dataByChr[[x]], row.names = FALSE, quote = FALSE, col.names = TRUE, sep=" ", file = paste(DIR, "/data/", x, sep = ""))})
 ##################################################### now start the loop
 # Now go over all regions that overlap between eQTL table and input.data
 if("N" %in% colnames(eqtl.df)){
@@ -287,8 +304,8 @@ message(paste("Phenotypic variance forbiom is ", unique(biom.df$sdY.biom^2)))
 
 message("Running in parallel")
 registerDoParallel(cores=cores)
-list.probes = unique(eqtl.df$ProbeID[which(eqtl.df$SNPID %in% biom.df$SNPID)])
-eqtl.dfByProbe=  split(eqtl.df, f=as.factor(eqtl.df$ProbeID))
+list.probes = bed$ProbeID
+eqtl.dfByProbe = split(seq(nrow(eqtl.df)), eqtl.df$ProbeID)
 
 if(!is.null(bed_input_file)){
     message("Reading LD independent bed file")
@@ -297,24 +314,25 @@ if(!is.null(bed_input_file)){
     bed = NULL
 }
 
-
+duplicated_snp_list = data.frame()
 #for(i in 1:length(list.probes)){
-
 res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
        ProbeID = as.character(list.probes[i]) ##the character bit is important for probe names that are numbers
        #region.eqtl <- subset(eqtl.df.chr, ProbeID == as.character(list.probes[i]))
        print(ProbeID)
-       region.eqtl <- eqtl.dfByProbe[[as.character(ProbeID)]]
-       pos.start <- min(region.eqtl$POS)
-       pos.end   <- max(region.eqtl$POS)
-       #my.chr = unique(region.eqtl$CHR)
-       chrom = region.eqtl$CHR[1]
-       #matches <- which(biom.df.chr$CHR==my.chr & biom.df.chr$POS > pos.start & biom.df.chr$POS < pos.end )
-       matches <- which(chrom == biom.df$CHR & biom.df$POS >= pos.start & biom.df$POS <= pos.end )
+       region.eqtl = eqtl.df[eqtl.dfByProbe[[as.character(ProbeID)]],]
+       pos.start = bed$START[i]
+       pos.end = bed$STOP[i]
+       chrom = bed$CHR[i]
+       matches <- which(region.eqtl$CHR==chrom & region.eqtl$POS > pos.start & region.eqtl$POS < pos.end )
+       region.eqtl <- region.eqtl[matches, ]
+       matches <- which(biom.df$CHR==chrom & biom.df$POS > pos.start & biom.df$POS < pos.end )
        region.biom <- biom.df[matches, ]
-
-       # matches <- which(my_split_list[[as.character(my.chr)]]
-       # region.biom <- subset(my_split_list[[as.character(my.chr)]], biom.df[matches, ])
+       # remove indels with same chr:pos as a snp?
+       duplicated_snp_list = rbind(duplicated_snp_list, data.frame(ProbeID = ProbeID, data="biom",remove_dupl(region.biom)[[2]]))
+       region.biom = remove_dupl(region.biom)[[1]]
+       duplicated_snp_list = rbind(duplicated_snp_list, data.frame(ProbeID = ProbeID, data="eqtl",remove_dupl(region.eqtl)[[2]]))
+       region.eqtl = remove_dupl(region.eqtl)[[1]]
 
        # Loop over each biomarker 
        # message(ProbeID, ": ", length(matches), " snps in biomarkers. From: ", pos.start, " To: ", pos.end)
