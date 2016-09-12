@@ -7,14 +7,16 @@ prefix = args[5]
 n_eqtl = args[6]
 options(error = quote({dump.frames(to.file=TRUE); q()}))
 
-source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/formatColoc.R")
+#source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/formatColoc.R")
 source("~/psychgen/resources/COLOC2/COLOC_scripts/scripts/functions_coloc_likelihood_summary_integrated.R")
 
 # filter by maf and imp quality when doing colocalization
 # liver eQTL is messed up: data= fread(fname, select = colsAll[[1]], col.names=names(colsAll[[1]]), colClasses=c(SNPID="character", ProbeID="character", BETA="numeric", PVAL="numeric", CHR="character", POS="numeric", F="numeric", SE="numeric", N="numeric"))
 # data= fread(fname, stringsAsFactors=FALSE)
-biom.df = formatColoc(fname = biom.fname, type=type, N=NA, Ncases=NA, info_filter=0, maf_filter=0, fread=T, eqtl=FALSE)
-eqtl.df = formatColoc(fname = eqtl.fname, type="quant", N=n_eqtl, Ncases=NA, info_filter=0, maf_filter=0, fread=T, eqtl=TRUE)
+#biom.df = formatColoc(fname = biom.fname, type=type, N=NA, Ncases=NA, info_filter=0, maf_filter=0, fread=T, eqtl=FALSE)
+#eqtl.df = formatColoc(fname = eqtl.fname, type="quant", N=n_eqtl, Ncases=NA, info_filter=0, maf_filter=0, fread=T, eqtl=TRUE)
+
+
 biom.df$type = type
 p12=1e-6 # this is for coloc with set priors
 plot = TRUE

@@ -1,7 +1,7 @@
 match_snpid = F 
 #submit = TRUE
 submit=F
-GWAS_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS3/"
+GWAS_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS4/"
 #EQTL_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/eQTLs/"
 OUT_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/temp_results"
 
@@ -12,15 +12,16 @@ eqtl_data = basename(eqtl_files)
 gtex_files = list.files("/sc/orga/projects/psychgen/resources/COLOC2/files/GTEX/", pattern="*.coloc.txt", full.names=T)
 gtex_data = basename(gtex_files)
 
-gtex_annotations = read.table("/sc/orga/projects/psychgen/resources/COLOC2/files/GTEX/annot/gtex_annot.txt", header=T)
+gtex_annotations = read.table("/sc/orga/projects/psychgen/resources/COLOC2/data/gtex_annot.txt", header=T)
 
 
 
 # Geuvadis? /sc/orga/projects/roussp01a/resources/SMR/eQTLs/Geuvadis/files/EUR373.gene.cis.FDR5.all.rs137.txt.gz 
 
-biom_data = c("AD", "CD", "ASD", "BMI", "CAD_ADD", "CAD_REC", "EXTRAVERSION", "EduYears", "FEMORAL_BMD", "FOREARM_BMD", "GIANT_HIP", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI", "HEIGHT", "IBD", "LIPIDS_HDL", "LIPIDS_LDL", "LIPIDS_TC", "LIPIDS_TG", "MI_ADD", "NEUROTICISM", "PGC2_BD", "PGC2_MDD", "PGC2_SCZ", "SPINE_BMD", "UC", "WellBeing_DS", "WellBeing_Neuroticism", "WellBeing_SWB", "cIMT", "cIMT_PLQ","PGC2_SCZ","URATE")
+biom_data =c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "DAIGRAM", "RA", "ASD", "UC", "CD", "IBD", "SCZ", "BIP", "AD", "PLAQUE", "CIMT", "HDL", "LDL", "TG", "TC", "EXTRAVERSION", "NEUROTICISM", "EduYears", "FEMORAL", "FOREARM", "SPINE", "WellBeing_DS", "WellBeing_Neuroticism", "WellBeing_SWB", "BMI", "HEIGHT", "GIANT_HIP", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI", "MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_HbA1C", "MAGIC_Manning_et_al_lnFastingInsulin_MainEffect", "MAGIC_ln_HOMA-B", "MAGIC_ln_HOMA-IR")
+  
 #biom_files = paste(GWAS_DIR, biom_data, ".SMR_INPUT.tsv", sep="")
-biom_files = paste(GWAS_DIR, biom_data, ".SMR_INPUT.tsv", sep="")
+biom_files = paste(GWAS_DIR, biom_data, "_formatted", sep="")
 eqtl_files = c(eqtl_files, gtex_files)
 table_pairs = expand.grid(biom_files, eqtl_files)
 names(table_pairs)=c("biom_files", "eqtl_files")
@@ -35,10 +36,8 @@ if(eqtl.fname %in% gtex_files){
 }else{
     eqtl_sample_size = NA
 }
-if (length(grep("BMI|EXTRAVERSION|EduYears|FEMORAL_BMD|FOREARM_BMD|SPINE_BMD|GIANT_HIP|GIANT_HIPadjBMI|GIANT_WC|GIANT_WCadjBM|GIANT_WHR|GIANT_WHRadjBMI|HEIGHT|LIPIDS_HDL|LIPIDS_LDL|LIPIDS_TC|LIPIDS_TG|NEUROTICISM|WellBeing_DS|WellBeing_Neuroticism|WellBeing_SWB|cIMT|URATE",  biom.fname))>0) type = "quant"
-if (length(grep("AD|CD|ASD|CAD_ADD|UC|IBD|MI_ADD|PGC2_BD|PGC2_MDD|PGC2_SCZ|PLQ", biom.fname))>0) type = "cc"
-
-
+if (length(grep("CIMT|HDL|LDL|TG|TC|EXTRAVERSION|NEUROTICISM|EduYears|FEMORAL|FOREARM|SPINE|WellBeing_DS|WellBeing_Neuroticism|WellBeing_SWB|BMI|HEIGHT|GIANT_HIP|GIANT_HIPadjBMI|GIANT_WC|GIANT_WCadjBMI|GIANT_WHR|GIANT_WHRadjBMI|MAGIC_Manning_et_al_FastingGlucose_MainEffect|MAGIC_HbA1C|MAGIC_Manning_et_al_lnFastingInsulin_MainEffect|MAGIC_ln_HOMA-B|MAGIC_ln_HOMA-IR",  biom.fname))>0) type = "quant"
+if (length(grep("CARDIoGRAMplusC4D|CARDIoGRAMplusC4D_REC|MI|DAIGRAM|RA|ASD|UC|CD|IBD|SCZ|BIP|AD|PLAQUE", biom.fname))>0) type = "cc"
 
 main_script = '/hpc/users/giambc02/scripts/COLOC/new_coloc_SMR_paper.R'
 biom.name = gsub(".SMR_INPUT.tsv", "", basename(biom.fname))
