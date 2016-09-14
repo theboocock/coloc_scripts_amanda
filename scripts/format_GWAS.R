@@ -61,10 +61,10 @@ if (addCHRPOS) {
    names(map2) = c("CHR", "POS", "SNPID")
 }
 
-odir = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS4/"
+odir = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS5/"
 
-for (biom.dataset in c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "ASD", "UC", "CD", "IBD", "BIP", "AD", "PLAQUE", "CIMT", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI")) { 
-#for (biom.dataset in c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "DAIGRAM", "RA", "ASD", "UC", "CD", "IBD", "SCZ", "BIP", "AD", "PLAQUE", "CIMT", "HDL", "LDL", "TG", "TC", "EXTRAVERSION", "NEUROTICISM", "EduYears", "FEMORAL", "FOREARM", "SPINE", "WellBeing_DS", "WellBeing_Neuroticism", "WellBeing_SWB", "BMI", "HEIGHT", "GIANT_HIP", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI", "MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_HbA1C", "MAGIC_Manning_et_al_lnFastingInsulin_MainEffect", "MAGIC_ln_HOMA-B", "MAGIC_ln_HOMA-IR")) {
+#for (biom.dataset in c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "ASD", "UC", "CD", "IBD", "BIP", "AD", "PLAQUE", "CIMT", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI")) { 
+for (biom.dataset in c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "DAIGRAM", "RA", "ASD", "UC", "CD", "IBD", "SCZ", "BIP", "AD", "PLAQUE", "CIMT", "HDL", "LDL", "TG", "TC", "EXTRAVERSION", "NEUROTICISM", "EduYears", "FEMORAL", "FOREARM", "SPINE", "WellBeing_DS", "WellBeing_Neuroticism", "WellBeing_SWB", "BMI", "HEIGHT", "GIANT_HIP", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI", "MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_HbA1C", "MAGIC_Manning_et_al_lnFastingInsulin_MainEffect", "MAGIC_ln_HOMA-B", "MAGIC_ln_HOMA-IR", "URATE")) {
 # LIPID TESL
 
  if (biom.dataset == "ASD") { # autism
@@ -480,20 +480,6 @@ if (typeCC) type="cc" else type="quant"
 source("/hpc/users/giambc02/scripts/COLOC/pipeline/functions_coloc_pipeline.R")
       #OUT_DIR= "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS3/"
       #dir.create(file.path(OUT_DIR), showWarnings = FALSE)
-      biom.df = tryCatch(formatColoc(fname = biom.fname, type=type, N=N, Ncases=NCASE, info_filter=0, maf_filter=0, fread=T, eqtl=FALSE), error=function(e) NULL )
-      if (is.null(biom.df)) {
-          message("******************************************!!!!! Study could not be processed")
-          write.table(paste("******************************************!!!!! Study ", biom.dataset, " could not be processed", sep=""), file=paste(odir, "_info.txt", sep=""), append = TRUE, sep="\t")
-          next()
-       }
-
-if (!("CHR" %in% names(biom.df)) | !("POS" %in% names(biom.df))) addCHRPOS=TRUE else addCHRPOS=FALSE
-# take out "chr" from SNPID
-biom.df$SNPID= gsub("chr", "", biom.df$SNPID)
-
-if (addCHRPOS) {
-   biom.df  = addCHRPOS_fn(biom.df)
-}
 
 if (biom.dataset %in% c("FEMORAL", "FOREARM", "SPINE")) {
    #biom.dataset = "FEMORAL"
@@ -508,8 +494,8 @@ if (biom.dataset %in% c("FEMORAL", "FOREARM", "SPINE")) {
    outFile= paste(odir, biom.dataset, "_formatted", sep="")
    biom.df= fread(biom.fname, header=T)
    biom.df= data.frame(biom.df)
-   biom.df=biom.df[,c("rs_number", "chromosome", "position", "eaf", "beta", "se", "p.value")]
-   names(biom.df) = c("SNPID", "CHR", "POS", "F", "BETA", "SE", "PVAL")
+   biom.df=biom.df[,c("rs_number", "chromosome", "position", "eaf", "beta", "se", "p.value", "reference_allele", "other_allele")]
+   names(biom.df) = c("SNPID", "CHR", "POS", "F", "BETA", "SE", "PVAL", "A1", "A2")
    biom.df$N= N
    biom.df$SNPID= gsub("chr", "", biom.df$SNPID)
    biom.df$CHR= gsub("chr", "", biom.df$CHR)
@@ -533,17 +519,18 @@ if (biom.dataset %in% c("DIAGRAM", "RA")) {
      # find SE from CI
      biom.df$SE= (biom.df$OR_95U - biom.df$OR_95L)/3.92 # used this
      #?? or SE = intervention effect estimate / Z
-     biom.df=biom.df[,c("SNP", "CHROMOSOME", "POSITION", "P_VALUE", "OR", "SE", "N_CASES", "N")]
+     biom.df=biom.df[,c("SNP", "CHROMOSOME", "POSITION", "P_VALUE", "OR", "SE", "N_CASES", "N", "RISK_ALLELE", "OTHER_ALLELE")]
    } else {
      biom.df$Ncases = NCASE
      biom.df$N = N
      biom.df$SE= (biom.df$OR_95.CIup - biom.df$OR_95.CIlow)/3.92 # used this
-     biom.df = biom.df[,c("SNPID", "Chr", "Position.hg19.", "P.val", "OR.A1.", "SE", "Ncases", "N")]
+     biom.df = biom.df[,c("SNPID", "Chr", "Position.hg19.", "P.val", "OR.A1.", "SE", "Ncases", "N", "A1", "A2")]
    }
-   names(biom.df)=c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "Ncases", "N")
+   names(biom.df)=c("SNPID", "CHR", "POS", "PVAL", "BETA", "SE", "Ncases", "N", "A1", "A2")
    biom.df$SNPID= gsub("chr", "", biom.df$SNPID)
    biom.df$CHR= gsub("chr", "", biom.df$CHR)
    n_cutoff = quantile(biom.df$N, c(.50))
+   biom.df_cut = biom.df[biom.df$N >=n_cutoff,]
    info = data.frame(data=biom.dataset, NsnpsCompleteData_before_filter = nrow(biom.df[complete.cases(biom.df),]), PVAL_range = paste(range(biom.df$PVAL), collapse=" , "), NsamplesMax= max(biom.df$N), NsamplesMin=min(biom.df$N), Ncut=as.numeric(n_cutoff), filtered_snps=nrow(biom.df)-nrow(biom.df_cut))
 
    write.table(info, file=paste(odir, "_info.txt", sep=""), append = TRUE, sep="\t")
@@ -559,10 +546,10 @@ if (biom.dataset %in% c("MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_
    biom.df= data.frame(biom.df)
    biom.df$N = N
    n_cutoff = quantile(biom.df$N, c(.50))
-   biom.df_main =  biom.df[,c("Snp", "maf", "MainEffects", "MainSE", "MainP", "N")]
-   biom.df_BMIAdjusted = biom.df[,c("Snp", "maf", "BMIadjMainEffects", "BMIadjMainSE", "BMIadjMainP", "N")]
-   names(biom.df_main) = c("SNPID", "F", "BETA", "SE", "PVAL", "N")
-   names(biom.df_BMIAdjusted) = c("SNPID", "F", "BETA", "SE", "PVAL", "N")
+   biom.df_main =  biom.df[,c("Snp", "maf", "MainEffects", "MainSE", "MainP", "N", "effect_allele", "other_allele")]
+   biom.df_BMIAdjusted = biom.df[,c("Snp", "maf", "BMIadjMainEffects", "BMIadjMainSE", "BMIadjMainP", "N", "effect_allele", "other_allele")]
+   names(biom.df_main) = c("SNPID", "F", "BETA", "SE", "PVAL", "N", "A1", "A2")
+   names(biom.df_BMIAdjusted) = c("SNPID", "F", "BETA", "SE", "PVAL", "N", "A1", "A2")
    t = addCHRPOS_fn(biom.df_main)
    outFile= paste(odir, biom.dataset, "_formatted", sep="")
 
@@ -577,7 +564,37 @@ if (biom.dataset %in% c("MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_
    next()
 }
 
+if (biom.dataset=="URATE") {
+   biom.df= fread(biom.fname, header=T)
+   biom.df= data.frame(biom.df)
+   names(biom.df)=c("SNPID", "N", "A1", "A2", "BETA", "SE", "PVAL")
+   biom.df = addCHRPOS_fn(biom.df)
+   n_cutoff = quantile(biom.df$N, c(.50))
+   biom.df_cut = biom.df[biom.df$N >=n_cutoff,]
+   info = data.frame(data=biom.dataset, NsnpsCompleteData_before_filter = nrow(biom.df[complete.cases(biom.df),]), PVAL_range = paste(range(biom.df$PVAL), collapse=" , "), NsamplesMax= max(biom.df$N), NsamplesMin=min(biom.df$N), Ncut=as.numeric(n_cutoff), filtered_snps=nrow(biom.df)-nrow(biom.df_cut))
 
+   write.table(info, file=paste(odir, "_info.txt", sep=""), append = TRUE, sep="\t")
+
+   write.table(biom.df, file=outFile, row.names = FALSE, quote = FALSE, col.names = TRUE, sep="\t")
+   write.table(biom.df_cut, file=paste(odir, biom.dataset, "_formatted_Nfiltered", sep=""), row.names = FALSE, quote = FALSE, col.names = TRUE, sep="\t")
+   message("File for ", biom.dataset, " saved in ", outFile)
+   next()
+}
+
+biom.df = tryCatch(formatColoc(fname = biom.fname, type=type, N=N, Ncases=NCASE, info_filter=0, maf_filter=0, fread=T, eqtl=FALSE), error=function(e) NULL )
+      if (is.null(biom.df)) {
+          message("******************************************!!!!! Study could not be processed")
+          write.table(paste("******************************************!!!!! Study ", biom.dataset, " could not be processed", sep=""), file=paste(odir, "_info.txt", sep=""), append = TRUE, sep="\t")
+          next()
+       }
+
+if (!("CHR" %in% names(biom.df)) | !("POS" %in% names(biom.df))) addCHRPOS=TRUE else addCHRPOS=FALSE
+# take out "chr" from SNPID
+biom.df$SNPID= gsub("chr", "", biom.df$SNPID)
+
+if (addCHRPOS) {
+   biom.df  = addCHRPOS_fn(biom.df)
+}
 
 # take out "chr" from CHR
 biom.df$CHR= gsub("chr", "", biom.df$CHR)

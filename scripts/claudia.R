@@ -10,6 +10,11 @@ Var.data <- function(f, N) {
   1 / (2 * N * f * (1 - f))
 }
 
+Var.data.from.z <- function(z,N,maf){
+    var_mle= 1 / (2 * maf * (1 - maf) * ( N  + z^2))
+    return(var_mle)
+}
+
 ##' variance of MLE of beta for case-control
 ##'
 ##' Internal function
@@ -20,6 +25,11 @@ Var.data <- function(f, N) {
 ##' @author Claudia Giambartolomei
 Var.data.cc <- function(f, N, s) {
   1 / (2 * N * f * (1 - f) * s * (1 - s))
+}
+
+Var.data.cc.from.z = function(z,N,maf,s){
+    var_mle= 1 / (2 * maf * (1 - maf) * ( N * s * (1 - s)  + z^2))
+    return(var_mle)
 }
 
 ##' Internal function, logsum
@@ -130,17 +140,22 @@ approx.bf.estimates <- function (z, V, type, suffix=NULL, sdY=d$beta) {
 ##  return(ret)
 ##}
 
-
-
-var_mle_from_z = function(z,n,maf){
-    var_mle= 1/(2*maf*(1-maf) * ( n + z^2))
-    return(var_mle)
-}
-
-approx.bf.estimates.pvalue  <- function(z, n, maf, suffix=NULL, sdY=1){
-  V = var_mle_from_z(z,n,maf)
+approx.bf.estimates.pvalue  <- function(p, N, s, maf, type, suffix=NULL, sdY=1){
+  z <- qnorm(0.5 * p, lower.tail = FALSE)
+  if(type=="quant") {
+     V = Var.data.from.z(z,N,maf)
+  } else {
+     V = Var.data.cc.from.z(z,N,maf,s)
+  }
   return(approx.bf.estimates.ave(z, V, type, suffix=suffix)) 
 } 
+
+approx.bf.estimates.variance  <- function(p, N, s, maf, type, suffix=NULL, sdY=1){
+    if(d$type == 'quant' & !('sdY' %in% nd)) 
+      d$sdY <- sdY.est(d$varbeta, d$MAF, d$N)
+    } else sdY=1
+  return(approx.bf.estimates.ave(z, V, type, sdY=sdY, suffix=suffix))
+}
 
 approx.bf.estimates.ave <- function (z, V, type, suffix=NULL, sdY=1) {
   listVec <- list(lABF_sd1 = lABF.fn(z, V, sd.prior=sqrt(0.01)*sdY), lABF_sd2 = lABF.fn(z, V, sd.prior=sqrt(0.1)*sdY), lABF_sd3 = lABF.fn(z, V, sd.prior=sqrt(0.5)*sdY))
@@ -283,11 +298,18 @@ fn.pw.gwas = function(p, data) {
 ##' @return estimated standard deviation of Y
 ##' 
 ##' @author Chris Wallace
-sdY.est <- function(vbeta, maf, n, beta) {
-  vars = 2 *maf * ( 1- maf) * n * vbeta * (n -1 ) + 2 *maf * ( 1- maf) * n * beta^2 
-  return(sqrt(median(vars/(n-1))))
+#sdY.est <- function(vbeta, maf, n, beta) {
+#  vars = 2 *maf * ( 1- maf) * n * vbeta * (n -1 ) + 2 *maf * ( 1- maf) * n * beta^2 
+#  return(sqrt(median(vars/(n-1))))
+#}
+sdY.est <- function(vbeta, maf, n) {
+  oneover <- 1/vbeta
+  nvx <- 2 * n * maf * (1-maf)
+  m <- lm(nvx ~ oneover - 1)
+  if(coef(m)[["oneover"]] < 0)
+    stop("Trying to estimate trait variance from betas, and getting negative estimate.  Something is wrong.  You can 'fix' this by supplying an estimate of trait standard deviation yourself, as sdY=<value> in the dataset list.")
+  return(sqrt(coef(m)[["oneover"]]))
 }
-
 
 
 ##' Internal function, process each dataset list for coloc.abf

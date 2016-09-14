@@ -1,7 +1,7 @@
 match_snpid = F 
 #submit = TRUE
 submit=F
-GWAS_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS4/"
+GWAS_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS/"
 #EQTL_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/eQTLs/"
 OUT_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/temp_results"
 
@@ -18,7 +18,7 @@ gtex_annotations = read.table("/sc/orga/projects/psychgen/resources/COLOC2/data/
 
 # Geuvadis? /sc/orga/projects/roussp01a/resources/SMR/eQTLs/Geuvadis/files/EUR373.gene.cis.FDR5.all.rs137.txt.gz 
 
-biom_data =c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "DAIGRAM", "RA", "ASD", "UC", "CD", "IBD", "SCZ", "BIP", "AD", "PLAQUE", "CIMT", "HDL", "LDL", "TG", "TC", "EXTRAVERSION", "NEUROTICISM", "EduYears", "FEMORAL", "FOREARM", "SPINE", "WellBeing_DS", "WellBeing_Neuroticism", "WellBeing_SWB", "BMI", "HEIGHT", "GIANT_HIP", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI", "MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_HbA1C", "MAGIC_Manning_et_al_lnFastingInsulin_MainEffect", "MAGIC_ln_HOMA-B", "MAGIC_ln_HOMA-IR")
+biom_data =c("CARDIoGRAMplusC4D", "CARDIoGRAMplusC4D_REC", "MI", "DAIGRAM", "RA", "ASD", "UC", "CD", "IBD", "SCZ", "BIP", "AD", "PLAQUE", "CIMT", "HDL", "LDL", "TG", "TC", "EXTRAVERSION", "NEUROTICISM", "EduYears", "FEMORAL", "FOREARM", "SPINE", "WellBeing_DS", "WellBeing_Neuroticism", "WellBeing_SWB", "BMI", "HEIGHT", "GIANT_HIP", "GIANT_HIPadjBMI", "GIANT_WC", "GIANT_WCadjBMI", "GIANT_WHR", "GIANT_WHRadjBMI", "MAGIC_Manning_et_al_FastingGlucose_MainEffect", "MAGIC_HbA1C", "MAGIC_Manning_et_al_lnFastingInsulin_MainEffect", "MAGIC_ln_HOMA-B", "MAGIC_ln_HOMA-IR", "URATE")
   
 #biom_files = paste(GWAS_DIR, biom_data, ".SMR_INPUT.tsv", sep="")
 biom_files = paste(GWAS_DIR, biom_data, "_formatted", sep="")
@@ -36,7 +36,7 @@ if(eqtl.fname %in% gtex_files){
 }else{
     eqtl_sample_size = NA
 }
-if (length(grep("CIMT|HDL|LDL|TG|TC|EXTRAVERSION|NEUROTICISM|EduYears|FEMORAL|FOREARM|SPINE|WellBeing_DS|WellBeing_Neuroticism|WellBeing_SWB|BMI|HEIGHT|GIANT_HIP|GIANT_HIPadjBMI|GIANT_WC|GIANT_WCadjBMI|GIANT_WHR|GIANT_WHRadjBMI|MAGIC_Manning_et_al_FastingGlucose_MainEffect|MAGIC_HbA1C|MAGIC_Manning_et_al_lnFastingInsulin_MainEffect|MAGIC_ln_HOMA-B|MAGIC_ln_HOMA-IR",  biom.fname))>0) type = "quant"
+if (length(grep("CIMT|HDL|LDL|TG|TC|EXTRAVERSION|NEUROTICISM|EduYears|FEMORAL|FOREARM|SPINE|WellBeing_DS|WellBeing_Neuroticism|WellBeing_SWB|BMI|HEIGHT|GIANT_HIP|GIANT_HIPadjBMI|GIANT_WC|GIANT_WCadjBMI|GIANT_WHR|GIANT_WHRadjBMI|MAGIC_Manning_et_al_FastingGlucose_MainEffect|MAGIC_HbA1C|MAGIC_Manning_et_al_lnFastingInsulin_MainEffect|MAGIC_ln_HOMA-B|MAGIC_ln_HOMA-IR|URATE",  biom.fname))>0) type = "quant"
 if (length(grep("CARDIoGRAMplusC4D|CARDIoGRAMplusC4D_REC|MI|DAIGRAM|RA|ASD|UC|CD|IBD|SCZ|BIP|AD|PLAQUE", biom.fname))>0) type = "cc"
 
 main_script = '/hpc/users/giambc02/scripts/COLOC/new_coloc_SMR_paper.R'
