@@ -53,8 +53,8 @@ remove_dupl = function(data, snpcol = "SNPID") {
 coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20,bootstrap=F,no_bootstraps=1000, min_snps=50, bed_input_file=NULL){
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
-   source("/hpc/users/giambc02/scripts/COLOC/claudia.R")
-   source("/hpc/users/giambc02/scripts/COLOC/optim_function.R")
+   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
 
 # Estimate trait variance. 
 
@@ -254,13 +254,11 @@ info <- data.frame(data=prefix, best_match_SNPID_eqtl_biom= paste(eqtl.df$SNPID[
 ##################################################### now start the loop
 # Now go over all regions that overlap between eQTL table and input.data
 
-#biom.df$sdY.biom = sdY.est((biom.df$SE)^2,biom.df$MAF,biom.df$N,biom.df$BETA) 
-#sdY.biom = sdY.est((biom.df$SE)^2,biom.df$MAF,biom.df$N,biom.df$BETA)
-sdY.biom = sdY.est(biom.df$SE^2, biom.df$MAF, biom.df$N) 
-biom.df$z = qnorm(0.5 * biom.df$PVAL, lower.tail = FALSE)
-biom.df$Neff_est = sdY.biom^2/(2*biom.df$MAF*(1-biom.df$MAF)*biom.df$SE^2) - biom.df$z^2 +1
-var_mle = 1/ (2 * biom.df$MAF * (1 - biom.df$MAF) * ( biom.df$Neff  + biom.df$z^2))
-message("Phenotypic variance for biom is ", signif(sdY.biom^2, digits=2))
+#sdY.biom = sdY.est(biom.df$SE^2, biom.df$MAF, biom.df$N) 
+#biom.df$z = qnorm(0.5 * biom.df$PVAL, lower.tail = FALSE)
+#biom.df$Neff_est = sdY.biom^2/(2*biom.df$MAF*(1-biom.df$MAF)*biom.df$SE^2) - biom.df$z^2 +1
+#var_mle = 1/ (2 * biom.df$MAF * (1 - biom.df$MAF) * ( biom.df$Neff  + biom.df$z^2))
+#message("Phenotypic variance for biom is ", signif(sdY.biom^2, digits=2))
 
 
 message("Running in parallel")
@@ -355,6 +353,8 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          nsnps = nrow(merged.data)
          message(ProbeID, ": ", nsnps, " snps in both biomarker and eQTL data. From: ", pos.start, " To: ", pos.end)
          #if(!is.null(bed)){
+         res.out = data.frame()
+
          if (!is.null(bed_input_file)) {
             merged.ranges = GRanges(seqnames=merged.data$CHR.biom,IRanges(start=merged.data$POS.biom,end=merged.data$POS.biom))
             merged.overlaps = findOverlaps(merged.ranges,bed)
@@ -363,7 +363,6 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          }  else {
             split_merged_data = list(merged.data) 
          }
-        res.out = data.frame()
         for (i in 1:length(split_merged_data)){
             merged.data = split_merged_data[[i]] 
             if(is.null(merged.data$bed_region)){
@@ -382,7 +381,7 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
                            NI = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF.eqtl)
            } else {
                 dataset.biom = list(snp = merged.data$SNPID, beta = merged.data$BETA.biom, varbeta= (merged.data$SE.biom)^2,
-                           s=merged.data$s1, type = type, MAF=merged.data$MAF.biom,N=merged.data$N.biom, sdY=unique(merged.data$sdY.biom))
+                           s=merged.data$s1, type = type, MAF=merged.data$MAF.biom,N=merged.data$N.biom) #, sdY=unique(merged.data$sdY.biom))
                 dataset.eqtl = list(snp = merged.data$SNPID, beta = merged.data$BETA.eqtl, varbeta= (merged.data$SE.eqtl)^2,
                            N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF.eqtl)
                 #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
