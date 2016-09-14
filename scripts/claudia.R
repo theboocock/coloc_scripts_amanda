@@ -333,7 +333,7 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
         #if(d$type == 'quant' & !('sdY' %in% nd)){
         if(!('sdY' %in% nd)){
            if("N" %in% nd){ 
-                d$sdY <- sdY.est(d$varbeta, d$MAF, d$N,d$beta)
+                d$sdY <- sdY.est(d$varbeta, d$MAF, d$N, d$beta)
                 d$Neff_est <- d$sdY^2/(2*d$MAF*(1-d$MAF)*d$varbeta) - (d$beta^2/d$varbeta) +1
                 d$var_mle_est = 1/ (2 * d$MAF * (1 - d$MAF) * ( d$Neff  + (d$beta^2/d$varbeta)))
                 d$sdY  <- 1
@@ -341,7 +341,13 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
                 d$sdY  <- 1
            }
         }
+    } 
+    if(!estimate_Neff){
+    if(d$type == 'quant' & !('sdY' %in% nd)) {
+      d$sdY <- sdY.est(d$varbeta, d$MAF, d$N, d$beta)
+    } else d$sdY  <- 1
     }
+
     if(correlation != 0){
         df = data.frame(Z,V,sdy) 
         df$Z=d$beta/sqrt(d$varbeta) 
@@ -363,7 +369,7 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
         message("Using variance estimated from Neff")
         df <- approx.bf.estimates.ave(z=d$z,
                               V=d$var_mle_est, type=d$type, suffix=suffix, sdY=1)
-        } else if(ave){
+        } else if(ave & !estimate_Neff){
         message("Using variance from data")
         df <- approx.bf.estimates.ave(z=d$z,
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
@@ -448,7 +454,7 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
 ##' @author Claudia Giambartolomei, Chris Wallace
 ##' @export
 coloc.abf <- function(dataset1, dataset2, MAF=NULL, 
-                      p1=1e-4, p2=1e-4, p12=1e-5, correlation=0) {
+                      p1=1e-4, p2=1e-4, p12=1e-5, estimate_Neff=TRUE, correlation=0) {
   if(!is.list(dataset1) || !is.list(dataset2))
     stop("dataset1 and dataset2 must be lists.")
   if(!("MAF" %in% names(dataset1)) & !is.null(MAF))
@@ -457,8 +463,8 @@ coloc.abf <- function(dataset1, dataset2, MAF=NULL,
     dataset2$MAF <- MAF
     
   # We are doing correlation .
-  df1 <- process.dataset(d=dataset1, suffix="df1", ave=TRUE,estimate_Neff=TRUE, correlation=correlation)
-  df2 <- process.dataset(d=dataset2, suffix="df2", ave=TRUE,estimate_Neff=TRUE,correlation=correlation)
+  df1 <- process.dataset(d=dataset1, suffix="df1", ave=TRUE, estimate_Neff=estimate_Neff, correlation=correlation)
+  df2 <- process.dataset(d=dataset2, suffix="df2", ave=TRUE, estimate_Neff=estimate_Neff,correlation=correlation)
   merged.df <- merge(df1,df2)
    
 

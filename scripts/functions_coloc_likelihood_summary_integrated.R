@@ -386,12 +386,34 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
                            N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF.eqtl)
                 #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
          }
+         source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=FALSE))
+         pp0       <- as.numeric(coloc.res$summary[2])
+         pp1       <- as.numeric(coloc.res$summary[3])
+         pp2       <- as.numeric(coloc.res$summary[4])
+         pp3       <- as.numeric(coloc.res$summary[5])
+         pp4       <- as.numeric(coloc.res$summary[6])
+         coloc.supplied.var = c(pp0, pp1, pp2, pp3, pp4) # this is using the supplied variance and sdY estimates only for quant
+     
+         #source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=TRUE))
+         pp0       <- as.numeric(coloc.res$summary[2])
+         pp1       <- as.numeric(coloc.res$summary[3])
+         pp2       <- as.numeric(coloc.res$summary[4])
+         pp3       <- as.numeric(coloc.res$summary[5])
+         pp4       <- as.numeric(coloc.res$summary[6])
+         coloc.var.Neff = c(pp0, pp1, pp2, pp3, pp4) # this is using the estimated variance form the effective sample and 
+
+         source("/hpc/users/giambc02/scripts/COLOC/original/claudia.R")
          (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12))
          pp0       <- as.numeric(coloc.res$summary[2])
          pp1       <- as.numeric(coloc.res$summary[3])
          pp2       <- as.numeric(coloc.res$summary[4])
          pp3       <- as.numeric(coloc.res$summary[5])
          pp4       <- as.numeric(coloc.res$summary[6])
+         coloc.old = c(pp0, pp1, pp2, pp3, pp4)
+
+
          snp.biom <- merged.data[which.min(merged.data$PVAL.biom), "SNPID"]
          snp.eqtl <- merged.data[which.min(merged.data$PVAL.eqtl), "SNPID"]
          min.pval.biom <- min(merged.data$PVAL.biom)
@@ -409,7 +431,9 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          lH4.abf <- logsum(lsum) -log(nsnps)
          all.abf <- c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
          message(unique(merged.data$bed_region))
-         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
+         #res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
+         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, coloc.supplied.var=paste(signif(coloc.supplied.var, digits=3), collapse=","), coloc.var.Neff = paste(signif(coloc.var.Neff, digits=3), collapse=","), coloc.old = paste(signif(coloc.old, digits=3), collapse=","), lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
+
          if (save.coloc.output) {
            coloc.out = paste(outfolder, "/coloc.output.perSNP/", sep="")
            if (!file.exists(coloc.out)) dir.create(coloc.out)
