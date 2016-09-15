@@ -50,13 +50,14 @@ remove_dupl = function(data, snpcol = "SNPID") {
     return(list(data, removed_list))
 }
 
-coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE,cores=20,bootstrap=F,no_bootstraps=1000, min_snps=50, bed_input_file=NULL){
+coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE, min_snps=50, bed_input_file=NULL){
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
    source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
    source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
 
-# Estimate trait variance. 
+   outfname = paste(outfolder, prefix, '_summary.tab', sep='')
+   out_removed_snps= paste(outfolder, prefix, '_removed_snps.tab', sep='')
 
 if (!file.exists(outfolder)) dir.create(outfolder)
 if (plot) {
@@ -133,14 +134,14 @@ if (length(info.columns) > 0)        {
 # Filter by MAF
 
 if (maf.eqtl) {
-   if("F" %in% names(eqtl.df)){
+   if ("F" %in% names(eqtl.df) & !("MAF" %in% names(eqtl.df))){
      eqtl.df$MAF = ifelse(eqtl.df$F<0.5, eqtl.df$F, 1-eqtl.df$F)
      }
     eqtl.df = subset(eqtl.df, eqtl.df$MAF > maf_filter)
     cols.eqtl = c(cols.eqtl, "MAF")
     }
 if (maf.biom) {
-   if("F" %in% names(biom.df)){
+   if ("F" %in% names(biom.df) & !("MAF" %in% names(biom.df))){
      biom.df$MAF = ifelse(biom.df$F<0.5, biom.df$F, 1-biom.df$F)
      }
    biom.df = subset(biom.df, biom.df$MAF > maf_filter)
@@ -171,8 +172,8 @@ if (maf.biom) {
     if (hasChr) (biom.df$CHR=gsub("chr", "", biom.df$CHR))
 
   # Takes too long, just add chr pos?
-  if (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", biom.df$SNPID))!=nrow(biom.df)) addChrposBiom = TRUE else addChrposBiom=FALSE
-  if (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", eqtl.df$SNPID))!=nrow(eqtl.df)) addChrposEQTL = TRUE else addChrposEQTL=FALSE
+  #if (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", biom.df$SNPID))!=nrow(biom.df)) addChrposBiom = TRUE else addChrposBiom=FALSE
+  #if (length(grep("^[0-9]{1,2}[:][1-9][0-9]*$", eqtl.df$SNPID))!=nrow(eqtl.df)) addChrposEQTL = TRUE else addChrposEQTL=FALSE
   biom.df$chrpos = paste(biom.df$CHR, biom.df$POS, sep=":")
   eqtl.df$chrpos = paste(eqtl.df$CHR, eqtl.df$POS, sep=":")
 
@@ -180,41 +181,35 @@ if (!match_snpid) {
 # Find the combinations of SNPID that matches the most SNPs between the two datasets
 biomSNPID = unique(biom.df$SNPID)
 eqtlSNPID = unique(eqtl.df$SNPID)
-match_snpid = max(length(biomSNPID[biomSNPID %in% eqtlSNPID]), length(eqtlSNPID[eqtlSNPID %in% biomSNPID]))
-match_chrpos_snpid = 0
-match_chrpos = 0
 
-if (addChrposBiom) {
-  biomchrpos = unique(biom.df$chrpos)
-  match_chrpos_snpid = max(length(biomchrpos[biomchrpos %in% eqtlSNPID]), length(biomchrpos[biomchrpos %in% eqtlSNPID]))
-}
+# put the two set of vectors in lists
+#l1 <- list(V1=biom.df$SNPID, V2=biom.df$chrpos)
+#l2 <- list(V3=eqtl.df$SNPID, V4=eqtl.df$chrpos)
+# create all combinations of list elements
+#idx <- expand.grid(seq_along(l1), seq_along(l2))
+intersect = outer(list(biom.df$SNPID, biom.df$chrpos), list(eqtl.df$SNPID, eqtl.df$chrpos), Vectorize(function(x, y) length(intersect(x, y))))
+best.index = which(intersect == max(intersect), arr.ind = TRUE)
 
-if (addChrposEQTL) {
-   eqtlchrpos = unique(eqtl.df$chrpos)
-   if (!addChrposBiom) {
-   match_chrpos_snpid = max(length(eqtlchrpos[eqtlchrpos %in% biomSNPID]), length(eqtlchrpos[eqtlchrpos %in% biomSNPID]))
-   }
-}
+best.biom.col = best.index[1]
+best.eqtl.col = best.index[2]
 
-if (addChrposBiom & addChrposEQTL) match_chrpos = max(length(biomchrpos[biomchrpos %in% eqtlchrpos]), length(biomchrpos[biomchrpos %in% eqtlchrpos]))
-
-# match_snpid = max(length(intersect(biomSNPID, eqtlSNPID)), length(intersect(eqtlSNPID, biomSNPID)))
-# Match is faster than intersect
-find_best_column = which.max(c(match_snpid, match_chrpos_snpid, match_chrpos))
-
-if (find_best_column==1) message("Best combination is SNPID: do not change column names")
-if (find_best_column==2) {
-    message("Best combination is SNPID in one dataset and input_name in the other: change one of the column names from input_name to SNPID")
+if (best.biom.col==1) {
+    message("Best combination for biom is SNPID")
+    }
+if (best.biom.col==2) {
+    message("Best combination for biom is chrpos")
     names(biom.df)[names(biom.df)=="SNPID"] <- "SNPID2"
     names(biom.df)[names(biom.df)=="chrpos"] <- "SNPID"
-}
-if (find_best_column==3) {
-    message("Best combination is chrpos in both the datasets: change both of the column names from chrpos to SNPID")
-    names(biom.df)[names(biom.df)=="SNPID"] <- "SNPID2"
-    names(biom.df)[names(biom.df)=="chrpos"] <- "SNPID"
+    }
+
+if (best.eqtl.col==1) {
+    message("Best combination for eqtl is SNPID")
+    }
+if (best.eqtl.col==2) {
+    message("Best combination for eqtl is chrpos")
     names(eqtl.df)[names(eqtl.df)=="SNPID"] <- "SNPID2"
     names(eqtl.df)[names(eqtl.df)=="chrpos"] <- "SNPID"
-}
+    }
 } # if !match_snpid
 
 ###################
@@ -249,8 +244,10 @@ bed$START=as.numeric(bed$START)
 bed$STOP=as.numeric(bed$STOP)
 message("Looping through ", nrow(bed), " genes from the eQTL data")
 
+# just some info on which IDs are matched, which data contains MAF, number of genes in data
 info <- data.frame(data=prefix, best_match_SNPID_eqtl_biom= paste(eqtl.df$SNPID[1], biom.df$SNPID[1], sep=","), biomNrows= nrow(biom.df), eqtlNrows= nrow(eqtl.df), maf.eqtl=maf.eqtl, maf.biom=maf.biom, Ngenes=nrow(bed))
 
+print(info)
 ##################################################### now start the loop
 # Now go over all regions that overlap between eQTL table and input.data
 
@@ -267,8 +264,11 @@ list.probes = bed$ProbeID
 eqtl.dfByProbe = split(seq(nrow(eqtl.df)), eqtl.df$ProbeID)
 
 removed_snp_list = data.frame()
-#for(i in 1:length(list.probes)){
-res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
+res.all = data.frame()
+for(i in 1:length(list.probes)){
+#for(i in which(list.probes=="ENSG00000111859"):length(list.probes)){
+#res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
+#res.all  <-  foreach(i=15780:length(list.probes), .combine=merge_results) %dopar% {
        ProbeID = as.character(list.probes[i]) ##the character bit is important for probe names that are numbers
        #region.eqtl <- subset(eqtl.df.chr, ProbeID == as.character(list.probes[i]))
        print(ProbeID)
@@ -323,10 +323,16 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
           print(merged.data[!snp_allele_match,])
           # TODO: Make generic so it works without alleles
           message(sum(snp_allele_match), " SNPs out of ", length(snp_allele_match), " had the correct alleles, discarding SNPs without the correct alleles")
-          removed_snp_list = rbind(removed_snp_list, data.frame(ProbeID = ProbeID, data="merged", Marker_removed=merged.data[!snp_allele_match,"SNPID"], reason="Alleles do not match"))
-          merged.data = merged.data[snp_allele_match,]
-      }
- 
+          if (length(merged.data[!snp_allele_match,"SNPID"])>0) {
+            removed_snp_list = rbind(removed_snp_list, data.frame(ProbeID = ProbeID, data="merged", Marker_removed=merged.data[!snp_allele_match,"SNPID"], reason="Alleles do not match"))
+            merged.data = merged.data[snp_allele_match,]
+          }
+        } #if (allele_merge)
+
+         if (nrow(merged.data)==0) {
+             next()
+         }
+
          if(!maf.eqtl){
             merged.data$MAF.eqtl = merged.data$MAF.biom
          }
@@ -371,14 +377,15 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
             nsnps = nrow(merged.data)
          if (nsnps <= min_snps ) {
              message("There are not enough common snps in the region")
-             next
+             #return(NULL)
+             next()
          }else{
            # For now run with p-values (better for cc data)
            if (!useBETA) {
                 dataset.biom = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.biom,
                            N = merged.data$N.biom, s=merged.data$s1, type = type, MAF=merged.data$MAF.biom)
                 dataset.eqtl = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.eqtl,
-                           NI = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF.eqtl)
+                           N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF.eqtl)
            } else {
                 dataset.biom = list(snp = merged.data$SNPID, beta = merged.data$BETA.biom, varbeta= (merged.data$SE.biom)^2,
                            s=merged.data$s1, type = type, MAF=merged.data$MAF.biom,N=merged.data$N.biom) #, sdY=unique(merged.data$sdY.biom))
@@ -386,39 +393,22 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
                            N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF.eqtl)
                 #dataset.eqtl$MAF <-  maf.eqtl[match(merged.data$SNPID, maf.eqtl$snp ) ,"maf"]
          }
-         source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
-         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=FALSE))
-         pp0       <- as.numeric(coloc.res$summary[2])
-         pp1       <- as.numeric(coloc.res$summary[3])
-         pp2       <- as.numeric(coloc.res$summary[4])
-         pp3       <- as.numeric(coloc.res$summary[5])
-         pp4       <- as.numeric(coloc.res$summary[6])
-         coloc.supplied.var = c(pp0, pp1, pp2, pp3, pp4) # this is using the supplied variance and sdY estimates only for quant
-     
-         #source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
-         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=TRUE))
-         pp0       <- as.numeric(coloc.res$summary[2])
-         pp1       <- as.numeric(coloc.res$summary[3])
-         pp2       <- as.numeric(coloc.res$summary[4])
-         pp3       <- as.numeric(coloc.res$summary[5])
-         pp4       <- as.numeric(coloc.res$summary[6])
-         coloc.var.Neff = c(pp0, pp1, pp2, pp3, pp4) # this is using the estimated variance form the effective sample and 
-
+##
+         ### COLOC OLD
          source("/hpc/users/giambc02/scripts/COLOC/original/claudia.R")
+
+                dataset.biom = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.biom,
+                           N = merged.data$N.biom, s=merged.data$s1, type = type, MAF=merged.data$MAF.biom)
+                dataset.eqtl = list(snp = merged.data$SNPID, pvalues = merged.data$PVAL.eqtl,
+                           N = merged.data$N.eqtl, type = "quant", MAF=merged.data$MAF.eqtl)
+
          (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12))
          pp0       <- as.numeric(coloc.res$summary[2])
          pp1       <- as.numeric(coloc.res$summary[3])
          pp2       <- as.numeric(coloc.res$summary[4])
          pp3       <- as.numeric(coloc.res$summary[5])
          pp4       <- as.numeric(coloc.res$summary[6])
-         coloc.old = c(pp0, pp1, pp2, pp3, pp4)
 
-
-         snp.biom <- merged.data[which.min(merged.data$PVAL.biom), "SNPID"]
-         snp.eqtl <- merged.data[which.min(merged.data$PVAL.eqtl), "SNPID"]
-         min.pval.biom <- min(merged.data$PVAL.biom)
-         min.pval.eqtl <- min(merged.data$PVAL.eqtl)
-         best.causal = as.character(coloc.res$results$snp[which.max(coloc.res$results$SNP.PP.H4)])
          ## Per locus likelihood
          # Take the logsum of the 4 models
          l1 = coloc.res$results$lABF.df1
@@ -429,10 +419,88 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
          lH2.abf <-  logsum(l2) - log(nsnps)
          lH3.abf <- logdiff(logsum(l1) + logsum(l2), logsum(lsum))  - log(nsnps^2)
          lH4.abf <- logsum(lsum) -log(nsnps)
-         all.abf <- c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
+         coloc.old.pval.lkl = c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
+         coloc.old.pval.set.priors = c(pp0, pp1, pp2, pp3, pp4)
+
+##
+                dataset.biom = list(snp = merged.data$SNPID, beta = merged.data$BETA.biom, varbeta= (merged.data$SE.biom)^2,
+                           s=merged.data$s1, type = type, MAF=merged.data$MAF.biom,N=merged.data$N.biom) #, sdY=unique(merged.data$sdY.biom))
+                dataset.eqtl = list(snp = merged.data$SNPID, beta = merged.data$BETA.eqtl, varbeta= (merged.data$SE.eqtl)^2,
+                           N = as.numeric(merged.data$N.eqtl), type = "quant", MAF=merged.data$MAF.eqtl)
+
+         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12))
+         pp0       <- as.numeric(coloc.res$summary[2])
+         pp1       <- as.numeric(coloc.res$summary[3])
+         pp2       <- as.numeric(coloc.res$summary[4])
+         pp3       <- as.numeric(coloc.res$summary[5])
+         pp4       <- as.numeric(coloc.res$summary[6])
+
+         ## Per locus likelihood
+         # Take the logsum of the 4 models
+         l1 = coloc.res$results$lABF.df1
+         l2 = coloc.res$results$lABF.df2
+         lsum <- coloc.res$results$internal.sum.lABF # lsum = l1 + l2
+         lH0.abf <- 0
+         lH1.abf <-  logsum(l1) - log(nsnps)
+         lH2.abf <-  logsum(l2) - log(nsnps)
+         lH3.abf <- logdiff(logsum(l1) + logsum(l2), logsum(lsum))  - log(nsnps^2)
+         lH4.abf <- logsum(lsum) -log(nsnps)
+         coloc.old.var.lkl = c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
+         coloc.old.var.set.priors = c(pp0, pp1, pp2, pp3, pp4)
+
+##
+         ## COLOC NEW
+         source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=FALSE))
+         pp0       <- as.numeric(coloc.res$summary[2])
+         pp1       <- as.numeric(coloc.res$summary[3])
+         pp2       <- as.numeric(coloc.res$summary[4])
+         pp3       <- as.numeric(coloc.res$summary[5])
+         pp4       <- as.numeric(coloc.res$summary[6])
+
+         ## Per locus likelihood
+         # Take the logsum of the 4 models
+         l1 = coloc.res$results$lABF.df1
+         l2 = coloc.res$results$lABF.df2
+         lsum <- coloc.res$results$internal.sum.lABF # lsum = l1 + l2
+         lH0.abf <- 0
+         lH1.abf <-  logsum(l1) - log(nsnps)
+         lH2.abf <-  logsum(l2) - log(nsnps)
+         lH3.abf <- logdiff(logsum(l1) + logsum(l2), logsum(lsum))  - log(nsnps^2)
+         lH4.abf <- logsum(lsum) -log(nsnps)
+         coloc.supplied.var.lkl = c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
+         coloc.supplied.var.set.priors = c(pp0, pp1, pp2, pp3, pp4) # this is using the supplied variance and sdY estimates only for quant
+##     
+         #source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+         (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=TRUE))
+         pp0       <- as.numeric(coloc.res$summary[2])
+         pp1       <- as.numeric(coloc.res$summary[3])
+         pp2       <- as.numeric(coloc.res$summary[4])
+         pp3       <- as.numeric(coloc.res$summary[5])
+         pp4       <- as.numeric(coloc.res$summary[6])
+
+         ## Per locus likelihood
+         # Take the logsum of the 4 models
+         l1 = coloc.res$results$lABF.df1
+         l2 = coloc.res$results$lABF.df2
+         lsum <- coloc.res$results$internal.sum.lABF # lsum = l1 + l2
+         lH0.abf <- 0
+         lH1.abf <-  logsum(l1) - log(nsnps)
+         lH2.abf <-  logsum(l2) - log(nsnps)
+         lH3.abf <- logdiff(logsum(l1) + logsum(l2), logsum(lsum))  - log(nsnps^2)
+         lH4.abf <- logsum(lsum) -log(nsnps)
+         coloc.var.Neff.lkl = c(lH0.abf, lH1.abf, lH2.abf, lH3.abf, lH4.abf)
+         coloc.var.Neff.set.priors = c(pp0, pp1, pp2, pp3, pp4) # this is using the estimated variance form the effective sample and 
+
+
+         snp.biom <- merged.data[which.min(merged.data$PVAL.biom), "SNPID"]
+         snp.eqtl <- merged.data[which.min(merged.data$PVAL.eqtl), "SNPID"]
+         min.pval.biom <- min(merged.data$PVAL.biom)
+         min.pval.eqtl <- min(merged.data$PVAL.eqtl)
+         best.causal = as.character(coloc.res$results$snp[which.max(coloc.res$results$SNP.PP.H4)])
          message(unique(merged.data$bed_region))
          #res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
-         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, best.causal=best.causal, PP0.coloc.priors=pp0, PP1.coloc.priors=pp1, PP2.coloc.priors=pp2, PP3.coloc.priors = pp3, PP4.coloc.priors=pp4, coloc.supplied.var=paste(signif(coloc.supplied.var, digits=3), collapse=","), coloc.var.Neff = paste(signif(coloc.var.Neff, digits=3), collapse=","), coloc.old = paste(signif(coloc.old, digits=3), collapse=","), lH0.abf=lH0.abf, lH1.abf=lH1.abf, lH2.abf=lH2.abf, lH3.abf=lH3.abf, lH4.abf=lH4.abf, plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
+         res.temp = data.frame(ProbeID = ProbeID, Chr = chrom, pos.start=pos.start, pos.end=pos.end, nsnps = nsnps, snp.biom=snp.biom, snp.eqtl=snp.eqtl, min.pval.biom=min.pval.biom, min.pval.eqtl=min.pval.eqtl, coloc.old.pval.lkl=paste(coloc.old.pval.lkl, collapse=","), coloc.old.var.lkl=paste(coloc.old.var.lkl, collapse=","), coloc.supplied.var.lkl=paste(coloc.supplied.var.lkl, collapse=","), coloc.var.Neff.lkl = paste(coloc.var.Neff.lkl, collapse=","), coloc.old.pval.set.priors = paste(signif(coloc.old.pval.set.priors, digits=3), collapse=","), coloc.old.var.set.priors = paste(signif(coloc.old.var.set.priors, digits=3), collapse=","), coloc.supplied.var.set.priors = paste(signif(coloc.supplied.var.set.priors, digits=3), collapse=","), coloc.var.Neff.set.priors= paste(signif(coloc.var.Neff.set.priors, digits=3), collapse=","), plotFiles=NA, files=NA, bed_region=unique(merged.data$bed_region))
 
          if (save.coloc.output) {
            coloc.out = paste(outfolder, "/coloc.output.perSNP/", sep="")
@@ -520,37 +588,37 @@ res.all  <-  foreach(i=1:length(list.probes), .combine=merge_results) %dopar% {
 
                  res.temp$plotFiles= paste(as.character(paste0(plot.fld, region_name, "_df1.pdf", sep="")), as.character(paste(plot.fld, region_name, "_df2.pdf", sep="")),sep=",")
          }
-         res.out = rbind(res.out,res.temp)
+         res.out = rbind(res.out,res.temp) #?? @ James: what is res.out?
+         res.all = rbind(res.all, res.temp) ### have added this with the loop b/c couldn't figure out how to work parallel, take out!!
+         write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
          #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
      }
     }
-      if(nrow(res.out)==0){
-        return(NULL)
-      }
-      return(res.out)
+} # added this to finish the function here
+    #} # if (nrow(merged.data)>0)
+# james#      if(nrow(res.out)==0){
+#james#        return(NULL)
+#james#      }
+#james#      return(res.out)
+          return(res.all)
+         write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
+         write.table(x =  removed_snp_list, file = out_removed_snps, row.names = FALSE, quote = FALSE, sep = '\t')
 }
 
-   outfname = paste(outfolder, prefix, '_summary.tab', sep='')
-   write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
-   res.all <- data.frame(res.all)
-   res.all$ProbeID <- as.character(res.all$ProbeID)
-   res.all$snp.eqtl <- as.character(res.all$snp.eqtl)
-   res.all$best.causal <- as.character(res.all$best.causal)
-   res.all$plotFiles <- as.character(res.all$plotFiles)
-   res.all$files <- as.character(res.all$files)
+
+est_lkl <- function(res.all, colnames.lkl = c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf"), cores=20,bootstrap=F,no_bootstraps=1000) {
    optim.res =  paste(outfolder, 'maximization_results.txt', sep='') 
    # Optimize to find the best parameters
-   lkl.frame = res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")]
+   lkl.frame = res.all[,colnames.lkl]
+   lkl.frame = as.matrix(sapply(lkl.frame, as.numeric))  
    alphas = optim(c(2,-2,-2,-2), fn, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
    optim.alphas = exp(alphas$par)/ sum(exp(c(alphas$par,alphas$par[2] + alphas$par[3])))
    write(paste("Model with 4 parameters: ", prefix, ": ", paste(optim.alphas, collapse =" , "), sep=""), file = optim.res, append=TRUE)
        
-   lkl.frame = res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")]
-
- alphas = optim(c(2, -2, -2, -2, -2), fn.pw.gwas, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
-  optim.alphas.mle= exp(alphas$par)/ sum(exp(alphas$par))
- if(bootstrap){
-bootstrap.all <-  foreach(i=1:no_bootstraps, .combine=rbind) %dopar% {
+   alphas = optim(c(2, -2, -2, -2, -2), fn.pw.gwas, data=lkl.frame, method = "Nelder-Mead", control=list(fnscale=-1))
+   optim.alphas.mle= exp(alphas$par)/ sum(exp(alphas$par))
+   if(bootstrap){
+   bootstrap.all <-  foreach(i=1:no_bootstraps, .combine=rbind) %dopar% {
      llk.frame.temp = lkl.frame[sample(nrow(lkl.frame), size=nrow(lkl.frame), replace=T),]
      alphas = optim(c(2, -2, -2, -2, -2), fn.pw.gwas, data=llk.frame.temp, method = "Nelder-Mead", control=list(fnscale=-1),hessian=T)
      optim.alphas = exp(alphas$par)/ sum(exp(alphas$par))
@@ -569,37 +637,9 @@ bootstrap.all <-  foreach(i=1:no_bootstraps, .combine=rbind) %dopar% {
   # l1 = res.all$lH1.abf[1]; l2 = res.all$lH2.abf[1]; # nsnp = res.all$nsnp[1]
   # first = combine.abf.locus(l0.locus=res.all$lH0.abf[1], l1.locus=res.all$lH1.abf[1], l2.locus=res.all$lH2.abf[1], l3.locus=res.all$lH3.abf[1], l4.locus=res.all$lH4.abf[1], a0, a1, a2, a3, a4) 
    
-   new.coloc = apply(res.all[,c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf")], 1, function(x) combine.abf.locus(x[1],x[2], x[3], x[4], x[5], a0 = optim.alphas.mle[1], a1 = optim.alphas.mle[2], a2 = optim.alphas.mle[3], a3 = optim.alphas.mle[4], a4 = optim.alphas.mle[5]))
+   new.coloc = apply(lkl.frame, 1, function(x) combine.abf.locus(x[1],x[2], x[3], x[4], x[5], a0 = optim.alphas.mle[1], a1 = optim.alphas.mle[2], a2 = optim.alphas.mle[3], a3 = optim.alphas.mle[4], a4 = optim.alphas.mle[5]))
    new.coloc=t(new.coloc)
 
    res.all = cbind.data.frame(res.all, new.coloc)
-
-   #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
-   #outfname = paste(outfolder, prefix, '_summary.tab', sep='')
-   write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
-
-   # If Gene.name is missing, use ensemblID instead, then try to retrieve name from biomaRt. 
-   if (length(res.all$ProbeID[grep("ENSG", res.all$ProbeID)]) >0  & !("Gene.name" %in% names(res.all))) addGeneName = TRUE
-   addGeneName= FALSE
-   if (addGeneName) {
-   res.all$Gene.name = res.all$ProbeID
-   # TODO ANnotation output filewith gene name
-   biomart=FALSE # it doesn't work sometimes -- cannot connect etc
-      if (biomart) {
-      library(biomaRt)
-      #if (length(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]) >0 ) {
-        mart <- useMart(biomart="ensembl", dataset="hsapiens_gene_ensembl")
-        res.gn <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), filters = "ensembl_gene_id", values = as.character(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]), mart = mart)
-        res.gn = res.gn[res.gn$hgnc_symbol!="",]
-        res.all$Gene.name = res.gn[match(res.all$ProbeID, res.gn$ensembl_gene_id),"hgnc_symbol"]
-        #res.all$Gene.name[which(res.all$Gene.name %in% res.gn$ensembl_gene_id)]= res.gn[match(res.all$Gene.name[which(res.all$Gene.name %in% res.gn$ensembl_gene_id)], res.gn$ensembl_gene_id), "hgnc_symbol"]
-     } else {
-        geneFileNames = "/sc/orga/projects/roussp01a/resources/Ensembl2HGNC/ENSEMBL_v70_TO_HGNC.tsv"
-        genes = read.table(geneFileNames, header=F, stringsAsFactors=FALSE, col.names=c("ensembl_gene_id", "hgnc_symbol"))
-        res.all$Gene.name = genes[match(res.all$Gene.name, genes$ensembl_gene_id), "hgnc_symbol"]
-    }
-   }
-   write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
    return(res.all)
 }
-

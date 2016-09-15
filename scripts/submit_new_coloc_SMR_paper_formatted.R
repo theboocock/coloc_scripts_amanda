@@ -11,19 +11,24 @@ biom_files = list.files(GWAS_DIR, full.names=T, pattern="_formatted$")
 table_pairs = expand.grid(biom_files, eqtl_files)
 names(table_pairs)=c("biom_files", "eqtl_files")
 
+outmain = paste(OUT_DIR, "/results/", sep="")
+      if (!file.exists (outmain)) dir.create(outmain, recursive=TRUE)
+      if (!file.exists (paste(OUT_DIR, "/scripts/", sep="")))  dir.create(paste(OUT_DIR, "/scripts/", sep=""))
+      if (!file.exists (paste(OUT_DIR, "/log/", sep="")))  dir.create(paste(OUT_DIR, "/log/", sep=""))
+
+
 for (i in 1:nrow(table_pairs)) {
 
 biom.fname = as.character(table_pairs$biom_files[i])
 eqtl.fname = as.character(table_pairs$eqtl_files[i])
 
-main_script = '/hpc/users/giambc02/scripts/COLOC/new_coloc_SMR_paper_formatted.R'
+main_script = '/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/new_coloc_SMR_paper_formatted.R'
 biom.name = gsub("_formatted", "", basename(biom.fname))
 eqtl.name = gsub("_formatted|_Analysis_cis-eQTLs.coloc.txt_formatted", "", basename(eqtl.fname))
 #eqtl.name = as.character(lapply(strsplit(as.character(eqtl.fname), "/", fixed=TRUE), "[", 9))
 message("Using biom ", biom.name, " and eQTL ", eqtl.name)
 prefix = paste(biom.name, eqtl.name, sep="_")
-outfolder = paste(OUT_DIR, "/results/", prefix, "/", sep="")
-      if (!file.exists (outfolder)) dir.create(outfolder)
+outfolder = paste(outmain, prefix, "/", sep="")
 
 scriptname=paste(OUT_DIR, "/scripts/Submit_main_script_", prefix, ".sh", sep="")
 
