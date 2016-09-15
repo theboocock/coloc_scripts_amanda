@@ -50,6 +50,29 @@ remove_dupl = function(data, snpcol = "SNPID") {
     return(list(data, removed_list))
 }
 
+addGeneNames = function(res.all, biomart=FALSE, geneFileNames = "/sc/orga/projects/roussp01a/resources/Ensembl2HGNC/ENSEMBL_v70_TO_HGNC.tsv") {
+   # If Gene.name is missing, use ensemblID instead, then try to retrieve name from biomaRt. 
+   #if (length(res.all$ProbeID[grep("ENSG", res.all$ProbeID)]) >0  & !("Gene.name" %in% names(res.all))) addGeneName = TRUE
+   res.all$Gene.name = res.all$ProbeID
+   # TODO ANnotation output filewith gene name
+   biomart=FALSE # it doesn't work sometimes -- cannot connect etc
+      if (biomart) {
+      library(biomaRt)
+      #if (length(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]) >0 ) {
+        mart <- useMart(biomart="ensembl", dataset="hsapiens_gene_ensembl")
+        res.gn <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), filters = "ensembl_gene_id", values = as.character(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]), mart = mart)
+        res.gn = res.gn[res.gn$hgnc_symbol!="",]
+        res.all$Gene.name = res.gn[match(res.all$ProbeID, res.gn$ensembl_gene_id),"hgnc_symbol"]
+        #res.all$Gene.name[which(res.all$Gene.name %in% res.gn$ensembl_gene_id)]= res.gn[match(res.all$Gene.name[which(res.all$Gene.name %in% res.gn$ensembl_gene_id)], res.gn$ensembl_gene_id), "hgnc_symbol"]
+     } else {
+        #geneFileNames = "/sc/orga/projects/roussp01a/resources/Ensembl2HGNC/ENSEMBL_v70_TO_HGNC.tsv"
+        genes = read.table(geneFileNames, header=F, stringsAsFactors=FALSE, col.names=c("ensembl_gene_id", "hgnc_symbol"))
+        res.all$Gene.name = genes[match(res.all$Gene.name, genes$ensembl_gene_id), "hgnc_symbol"]
+    }
+   return(res.all)
+}
+
+
 coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE, min_snps=50, bed_input_file=NULL){
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 

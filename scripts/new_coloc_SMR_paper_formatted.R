@@ -36,34 +36,7 @@ names(t)[(ncol(t)-4):ncol(t)] = c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "l
 
 res2 = est_lkl(t)
 
+res2 = addGeneNames(res2, biomart=FALSE, geneFileNames = "/sc/orga/projects/roussp01a/resources/Ensembl2HGNC/ENSEMBL_v70_TO_HGNC.tsv")
 
-  #res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
-   #outfname = paste(outfolder, prefix, '_summary.tab', sep='')
-   write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
-
-   # If Gene.name is missing, use ensemblID instead, then try to retrieve name from biomaRt. 
-   if (length(res.all$ProbeID[grep("ENSG", res.all$ProbeID)]) >0  & !("Gene.name" %in% names(res.all))) addGeneName = TRUE
-   addGeneName= FALSE
-   if (addGeneName) {
-   res.all$Gene.name = res.all$ProbeID
-   # TODO ANnotation output filewith gene name
-   biomart=FALSE # it doesn't work sometimes -- cannot connect etc
-      if (biomart) {
-      library(biomaRt)
-      #if (length(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]) >0 ) {
-        mart <- useMart(biomart="ensembl", dataset="hsapiens_gene_ensembl")
-        res.gn <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), filters = "ensembl_gene_id", values = as.character(res.all$Gene.name[grep("ENSG", res.all$Gene.name)]), mart = mart)
-        res.gn = res.gn[res.gn$hgnc_symbol!="",]
-        res.all$Gene.name = res.gn[match(res.all$ProbeID, res.gn$ensembl_gene_id),"hgnc_symbol"]
-        #res.all$Gene.name[which(res.all$Gene.name %in% res.gn$ensembl_gene_id)]= res.gn[match(res.all$Gene.name[which(res.all$Gene.name %in% res.gn$ensembl_gene_id)], res.gn$ensembl_gene_id), "hgnc_symbol"]
-     } else {
-        geneFileNames = "/sc/orga/projects/roussp01a/resources/Ensembl2HGNC/ENSEMBL_v70_TO_HGNC.tsv"
-        genes = read.table(geneFileNames, header=F, stringsAsFactors=FALSE, col.names=c("ensembl_gene_id", "hgnc_symbol"))
-        res.all$Gene.name = genes[match(res.all$Gene.name, genes$ensembl_gene_id), "hgnc_symbol"]
-    }
-   }
-   write.table(x =  res.all , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
-   write.table(x = removed_snp_list, file = out_removed_snps, row.names = FALSE, quote = FALSE, sep = '\t')
-   return(res.all)
-}
-
+#res.all <- res.all[with(res.all, order(pp4, decreasing=T)),]
+write.table(x =  res2 , file = outfname, row.names = FALSE, quote = FALSE, sep = '\t')
