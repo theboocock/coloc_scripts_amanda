@@ -77,7 +77,7 @@ coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
    source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
-   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
+   #source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
 
    outfname = paste(outfolder, prefix, '_summary.tab', sep='')
    out_removed_snps= paste(outfolder, prefix, '_removed_snps.tab', sep='')
@@ -106,7 +106,9 @@ if ("Ncases" %in% names(biom.df)) cc=TRUE else cc=FALSE
 #if (all(c("CHR", "POS") %in% names(eqtl.df))) haveCHRPOS.eqtl=TRUE else haveCHRPOS.eqtl=FALSE
 maf.eqtl = ifelse(any(c("MAF","F") %in% names(eqtl.df)), TRUE, FALSE) 
 maf.biom = ifelse(any(c("MAF","F") %in% names(biom.df)), TRUE, FALSE)
-if (!maf.eqtl & !maf.biom) message("There is no MAF information in neither datasets, looking for frequency column") 
+if (!maf.eqtl & !maf.biom) {
+  message("There is no MAF information in neither datasets, must use external") 
+  }
 
 ## check all columns exist
 #if (useBETA) cols.eqtl = c("SNPID", "CHR", "POS", "BETA", "SE", "PVAL", "ProbeID", "N") else cols.eqtl = c("SNPID", "CHR", "POS", "PVAL", "ProbeID", "N")
@@ -473,6 +475,7 @@ for(i in 1:length(list.probes)){
 
 ##
          ## COLOC NEW
+         # suppressMessages(capture.output(coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)))
          source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
          (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=FALSE))
          pp0       <- as.numeric(coloc.res$summary[2])
@@ -630,6 +633,9 @@ for(i in 1:length(list.probes)){
 
 
 est_lkl <- function(res.all, colnames.lkl = c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf"), cores=20,bootstrap=F,no_bootstraps=1000) {
+   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
+   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+
    optim.res =  paste(outfolder, 'maximization_results.txt', sep='') 
    # Optimize to find the best parameters
    lkl.frame = res.all[,colnames.lkl]

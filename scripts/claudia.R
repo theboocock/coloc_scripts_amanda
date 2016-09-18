@@ -337,7 +337,9 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
                 d$Neff_est <- d$sdY^2/(2*d$MAF*(1-d$MAF)*d$varbeta) - (d$beta^2/d$varbeta) +1
                 d$var_mle_est = 1/ (2 * d$MAF * (1 - d$MAF) * ( d$Neff  + (d$beta^2/d$varbeta)))
                 d$sdY  <- 1
+                message("Using the supplied variance to compute the estimated variance from effective sample size")
             }else{
+                message("There is no N in the data: Assume sdY = 1")
                 d$sdY  <- 1
            }
         }
@@ -345,7 +347,13 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
     if(!estimate_Neff){
     if(d$type == 'quant' & !('sdY' %in% nd)) {
       d$sdY <- sdY.est(d$varbeta, d$MAF, d$N, d$beta)
-    } else d$sdY  <- 1
+      message("Using the supplied variance to estimate sdY for quantitative traits")
+      } else {
+    if (d$type == 'cc' & !('sdY' %in% nd)) {
+      message("Assume a sdY=1 for case/controls")
+      d$sdY  <- 1
+     }
+    }
     }
 
     if(correlation != 0){
@@ -370,7 +378,7 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
         df <- approx.bf.estimates.ave(z=d$z,
                               V=d$var_mle_est, type=d$type, suffix=suffix, sdY=1)
         } else if(ave & !estimate_Neff){
-        message("Using variance from data")
+        message("Using variance from data and mean sdY of ", mean(d$sdY))
         df <- approx.bf.estimates.ave(z=d$z,
                               V=d$varbeta, type=d$type, suffix=suffix, sdY=d$sdY)
         }

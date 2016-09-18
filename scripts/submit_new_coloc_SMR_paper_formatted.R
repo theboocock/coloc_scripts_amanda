@@ -1,6 +1,6 @@
 match_snpid = F
-#submit = TRUE
-submit=F
+submit = TRUE
+#submit=F
 GWAS_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/GWAS/"
 EQTL_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/files/eQTLs2/"
 OUT_DIR = "/sc/orga/projects/psychgen/resources/COLOC2/temp_results"
@@ -34,12 +34,12 @@ scriptname=paste(OUT_DIR, "/scripts/Submit_main_script_", prefix, ".sh", sep="")
 
      write(file=scriptname, paste("#!/bin/bash
           #BSUB -J coloc_", prefix,"
-          #BSUB -q premium 
+          #BSUB -q alloc
           #BSUB -P acc_psychgen 
           #BSUB -n 20
           #BSUB -R span[hosts=1]
-          #BSUB -R 'rusage[mem=50000]'
-          #BSUB -W 30:00 
+          #BSUB -R 'rusage[mem=5000]'
+          #BSUB -W 40:00 
           #BSUB -L /bin/bash
           #BSUB -oo ", OUT_DIR, "/log/", prefix, ".out
           #BSUB -eo ", OUT_DIR, "/log/", prefix, ".err", sep=""), append=F)
