@@ -76,7 +76,7 @@ addGeneNames = function(res.all, biomart=FALSE, geneFileNames = "/sc/orga/projec
 coloc.eqtl.biom <- function(eqtl.df, biom.df, p12=1e-6, useBETA=TRUE, plot=FALSE, outfolder, prefix= "pref", save.coloc.output=FALSE, match_snpid=TRUE, min_snps=50, bed_input_file=NULL){
   if (class(eqtl.df$ProbeID)!="character") stop("When reading the data frame, make sure class of ProbeID in eQTL data is a character")
 
-   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+   source("/sc/orga/projects/psychgen/resources/COLOC2/claudia_scripts/coloc_scripts/scripts/claudia.R")
    #source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
 
    outfname = paste(outfolder, prefix, '_summary.tab', sep='')
@@ -235,8 +235,10 @@ if (best.eqtl.col==2) {
     names(eqtl.df)[names(eqtl.df)=="SNPID"] <- "SNPID2"
     names(eqtl.df)[names(eqtl.df)=="chrpos"] <- "SNPID"
     }
-} # if !match_snpid
-
+   
+}
+print(biom.df$SNPID)# if !match_snpid
+print(eqtl.df$SNPID)
 ###################
 # Find ProbeIDs overlapping with biom.df
 if(!is.null(bed_input_file)){
@@ -476,7 +478,7 @@ for(i in 1:length(list.probes)){
 ##
          ## COLOC NEW
          # suppressMessages(capture.output(coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12)))
-         source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+         source("/sc/orga/projects/psychgen/resources/COLOC2/claudia_scripts/coloc_scripts/scripts/claudia.R")
          (coloc.res <- coloc.abf(dataset.biom, dataset.eqtl, p12 = p12, estimate_Neff=FALSE))
          pp0       <- as.numeric(coloc.res$summary[2])
          pp1       <- as.numeric(coloc.res$summary[3])
@@ -633,8 +635,8 @@ for(i in 1:length(list.probes)){
 
 
 est_lkl <- function(res.all, colnames.lkl = c("lH0.abf", "lH1.abf", "lH2.abf", "lH3.abf", "lH4.abf"), cores=20,bootstrap=F,no_bootstraps=1000) {
-   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/optim_function.R")
-   source("/sc/orga/projects/epigenAD/coloc/coloc2_gitrepo/coloc_scripts/scripts/claudia.R")
+   source("/sc/orga/projects/psychgen/resources/COLOC2/claudia_scripts/coloc_scripts/scripts/optim_function.R")
+   source("/sc/orga/projects/psychgen/resources/COLOC2/claudia_scripts/coloc_scripts/scripts/claudia.R")
 
    optim.res =  paste(outfolder, 'maximization_results.txt', sep='') 
    # Optimize to find the best parameters

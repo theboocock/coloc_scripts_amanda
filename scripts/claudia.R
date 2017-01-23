@@ -332,7 +332,8 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
     if(estimate_Neff){
         #if(d$type == 'quant' & !('sdY' %in% nd)){
         if(!('sdY' %in% nd)){
-           if("N" %in% nd){ 
+           if("N" %in% nd){
+                 print("Doing neff") 
                 d$sdY <- sdY.est(d$varbeta, d$MAF, d$N, d$beta)
                 d$Neff_est <- d$sdY^2/(2*d$MAF*(1-d$MAF)*d$varbeta) - (d$beta^2/d$varbeta) +1
                 d$var_mle_est = 1/ (2 * d$MAF * (1 - d$MAF) * ( d$Neff  + (d$beta^2/d$varbeta)))
@@ -343,7 +344,9 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
                 d$sdY  <- 1
            }
         }
-    } 
+    }
+   print(paste("SDY = ",d$sdY))
+   print(d$varbeta) 
     if(!estimate_Neff){
     if(d$type == 'quant' & !('sdY' %in% nd)) {
       d$sdY <- sdY.est(d$varbeta, d$MAF, d$N, d$beta)
@@ -367,7 +370,9 @@ process.dataset <- function(d, suffix, ave=TRUE, estimate_Neff=TRUE,correlation=
         return(df)
     }
     # if there are negative value, then it is a logOR?
+    d$sdY = 1
     if (length(d$beta[d$beta<0])>0) log=FALSE else log=TRUE
+    # For CC
     if (d$type=="cc" & log) d$z = log(d$beta)/sqrt(d$varbeta) else d$z = d$beta/sqrt(d$varbeta)
     #if (d$type == "quant") {
         if(!ave) {
